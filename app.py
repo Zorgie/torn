@@ -89,6 +89,75 @@ def add_data():
     # Optionally, return the newly created item's ID
     return jsonify({"message": "Item added successfully"}), 201
 
+@app.route('/item_data/<itemName>', methods=['GET'])
+def get_item_data(itemName):
+    # The item name is passed as part of the URL path
+    conn = get_db_connection()
+    
+    try:
+        # Select price and quantity for the given symbol, limited to 20 most recent results
+        result = conn.execute(
+            'SELECT itemId FROM ITEM_DATA WHERE UPPER(itemName) = UPPER(?)', 
+            (itemName,)
+        ).fetchone()
+    
+        conn.close()
+        
+        if result and result[0] is not None:
+            # result[0] accesses the value from the first (and only) column
+            itemId = result[0] 
+        else:
+            itemId = None
+            
+        # Return the value directly as a simple JSON object
+        return jsonify({itemName: itemId})
+
+    except sqlite3.Error as e:
+        conn.close()
+        # Return a 500 error if there's a database issue
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+
+@app.route('/daily_summary', methods=['POST'])
+def get_daily_summary():
+    if not request.is_json:
+        return jsonify({"error": "Missing JSON in request"}), 400
+    
+    data = request.get_json()
+    dates = data.get('dates', [])
+    quoted_dates = [f"'{date}'" for date in dates];
+    dates_param = ", ".join(quoted_dates)
+
+    if not dates or not isinstance(dates, list):
+        return jsonify({"error": "Invalid or missing 'dates' array in request body."}), 400
+
+    # The front-end function sends a list of dates (YYYY-MM-DD) here.
+    # You can now implement your custom SQL query below using the 'dates' array.
+    
+    # --- START USER SQL QUERY LOGIC ---
+    query = '''
+            SELECT *, sellCount * (avgSellPrice - avgBuyPrice) as profit FROM (
+            SELECT
+                itemName,
+                strftime('%Y-%m-%d', DATETIME(ROUND(timestamp), 'unixepoch')) AS isodate, 
+                SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) as buyCount,
+                SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) AS avgBuyPrice,
+                SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) as sellCount,
+                ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) AS avgSellPrice
+            FROM MARKET_TRADES NATURAL INNER JOIN ITEM_DATA
+            WHERE isodate IN({date_list})
+            GROUP BY 1, 2)
+            ORDER BY profit DESC;
+    '''.format(date_list=dates_param)
+
+    conn = get_db_connection()
+    results = conn.execute(query).fetchall()
+    conn.close()
+    
+    # Convert rows to a list of dictionaries for JSON response
+    # items = [dict(row) for row in items] # Already handled by row_factory above, but good to know
+    
+    return jsonify([dict(ix) for ix in results])
+
 @app.route('/')
 def serve_frontend():
     # Construct the path to the HTML file in the same directory as app.py

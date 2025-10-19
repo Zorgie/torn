@@ -1,27 +1,108 @@
-<!doctype html>
-<html lang="en-us">
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Hello, sqlite3</title>
-  </head>
-  <body>
-    <div>
-        Hello, world
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask API Client</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom Scrollbar for better UX */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans p-6 md:p-10 min-h-screen">
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold text-indigo-700">Database API Client</h1>
+            <p class="text-lg text-gray-500 mt-2">Front-end served by Flask (Client on `http://localhost:5000/`)</p>
+        </header>
+
+        <!-- Most Recent Timestamp Section -->
+        <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-indigo-500">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Market Data Query (GET /most_recent)</h2>
+            <div class="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+                <div id="recent-timestamp-output" class="text-xl font-mono text-green-700 bg-green-50 p-3 rounded-lg w-full md:w-auto text-center md:text-left shadow-inner">
+                    Awaiting data...
+                </div>
+                <button id="fetch-recent-btn" class="px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md transform hover:scale-105">
+                    Fetch Latest Trade Timestamp
+                </button>
+            </div>
+        </section>
+
+        <!-- Sync data Section -->
+        <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-indigo-500">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Sync data</h2>
+            <div class="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+                <div id="sync-data-output" class="text-xl font-mono text-green-700 bg-green-50 p-3 rounded-lg w-full md:w-auto text-center md:text-left shadow-inner">
+                    Awaiting data...
+                </div>
+                <button id="sync-data-btn" class="px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md transform hover:scale-105">
+                    Sync data with torn API
+                </button>
+            </div>
+        </section>
+
+        <!-- Item Search Section -->
+        <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-teal-500">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Item Trade Search (GET /item_data/name)</h2>
+            <div class="flex flex-col md:flex-row gap-4 mb-6">
+                <input type="text" id="search-name-input" placeholder="Enter item name (e.g., GOOG)" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500">
+                <button id="search-item-btn" class="px-6 py-3 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 transition duration-150 shadow-md transform hover:scale-105">
+                    Search Trades
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                        </tr>
+                    </thead>
+                    <tbody id="search-results-body" class="bg-white divide-y divide-gray-200">
+                        <tr><td colspan="2" class="px-6 py-4 text-center text-sm text-gray-500">Enter an item name and search.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Daily Summary Section (NEW) -->
+        <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-purple-500">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Daily Trade Summary (POST /daily_summary)</h2>
+            <p class="text-sm text-gray-500 mb-4">Enter one or more dates separated by commas (e.g., YYYY-MM-DD,YYYY-MM-DD).</p>
+            <div class="flex flex-col md:flex-row gap-4 mb-6">
+                <input type="text" id="daily-date-input" placeholder="e.g., 2025-10-18, 2025-10-19" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500">
+                <button id="generate-summary-btn" class="px-6 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition duration-150 shadow-md transform hover:scale-105">
+                    Generate Summary
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 text-xs">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-2 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
+                            <th class="px-2 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <th class="px-2 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Buy Count</th>
+                            <th class="px-2 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Avg Buy Price</th>
+                            <th class="px-2 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Sell Count</th>
+                            <th class="px-2 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Avg Sell Price</th>
+                            <th class="px-2 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Profit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summary-results-body" class="bg-white divide-y divide-gray-200">
+                        <tr><td colspan="7" class="px-2 py-4 text-center text-sm text-gray-500">Select dates to generate report.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
-    <div id="dataStatus">Not fetched</div>
-    <input id="apiKey">API Key</input>
-    <input id="minTimestamp">Min timestamp (epoch)</intput>
-    <button onclick="fetchTorn()">Fetch item market</button>
-    <button onclick="fetchBazaar()">Fetch bazaar</button>
-    <button onclick="parseTrades()">Parse trades</button>
-    <button onclick="generateSqlOutput()">SQL output</button>
-    <button onclick="generateItemSql()">Item SQL</button>
-    <button onclick="fetchItems()">Fetch items</button>
-    <button onclick="pushToTable()">Push items to table</button>
-    <button onclick="syncData()">Sync data</button>
-    <textarea id="output"></textarea>
-    <script src="http://192.168.2.44:5000/code"></script>
-    <script src="items.js"></script>
-  </body>
+  <script src="http://192.168.2.44:5000/code"></script>
+</body>
 </html>
