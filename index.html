@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Hello, sqlite3</title>
+  </head>
+  <body>
+    <div>
+        Hello, world
+    </div>
+    <div id="dataStatus">Not fetched</div>
+    <input id="apiKey">API Key</input>
+    <input id="minTimestamp">Min timestamp (epoch)</intput>
+    <button onclick="fetchTorn()">Fetch item market</button>
+    <button onclick="fetchBazaar()">Fetch bazaar</button>
+    <button onclick="parseTrades()">Parse trades</button>
+    <button onclick="generateSqlOutput()">SQL output</button>
+    <button onclick="generateItemSql()">Item SQL</button>
+    <button onclick="fetchItems()">Fetch items</button>
+    <button onclick="pushToTable()">Push items to table</button>
+    <button onclick="syncData()">Sync data</button>
+    <textarea id="output"></textarea>
+    <script src="http://192.168.2.44:5000/code"></script>
+    <script src="items.js"></script>
+  </body>
+</html>
