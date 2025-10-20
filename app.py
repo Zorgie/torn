@@ -158,6 +158,25 @@ def get_daily_summary():
     
     return jsonify([dict(ix) for ix in results])
 
+@app.route('/total_summary', methods=['GET'])
+def get_total_summary():
+    query = '''
+            SELECT *, sellCount * (avgSellPrice - avgBuyPrice) as profit FROM (
+            SELECT
+                itemName,
+                SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) as buyCount,
+                SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) AS avgBuyPrice,
+                SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) as sellCount,
+                ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) AS avgSellPrice
+            FROM MARKET_TRADES NATURAL INNER JOIN ITEM_DATA
+            GROUP BY 1)
+            ORDER BY profit DESC;
+'''
+    conn = get_db_connection()
+    results = conn.execute(query).fetchall()
+    conn.close()
+    return jsonify([dict(ix) for ix in results])
+
 @app.route('/')
 def serve_frontend():
     # Construct the path to the HTML file in the same directory as app.py

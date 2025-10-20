@@ -11,13 +11,13 @@ const syncDataBtn = document.getElementById("sync-data-btn");
 
 // Item search selectors
 const searchItemDataBtn = document.getElementById("search-item-btn");
-const searchNameInput = document.getElementById('search-name-input');
-const searchResultsBody = document.getElementById('search-results-body');
+const searchNameInput = document.getElementById("search-name-input");
+const searchResultsBody = document.getElementById("search-results-body");
 
 // Daily summary selectors
-const dailyDateInput = document.getElementById('daily-date-input');
-const generateSummaryBtn = document.getElementById('generate-summary-btn');
-const summaryResultsBody = document.getElementById('summary-results-body');
+const dailyDateInput = document.getElementById("daily-date-input");
+const generateSummaryBtn = document.getElementById("generate-summary-btn");
+const summaryResultsBody = document.getElementById("summary-results-body");
 
 // --- Utility Functions ---
 
@@ -32,39 +32,24 @@ function showError(elementId, message) {
 
 // --- Utility Functions ---
 function showError(elementId, message) {
-    const element = document.getElementById(elementId);
-    if (element) {
-        element.innerHTML = `<span class="font-semibold">Error:</span> ${message}`;
-        element.classList.remove('text-green-700', 'bg-green-50');
-        element.classList.add('text-red-700', 'bg-red-100');
-    }
+  const element = document.getElementById(elementId);
+  if (element) {
+    element.innerHTML = `<span class="font-semibold">Error:</span> ${message}`;
+    element.classList.remove("text-green-700", "bg-green-50");
+    element.classList.add("text-red-700", "bg-red-100");
+  }
 }
 
 function formatCurrency(value) {
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 0,
-    }).format(value);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits : 0,
+  }).format(value);
 }
 
 // --- API Call Handlers ---
-
-async function fetchAllData() {
-  dataListContainer.innerHTML =
-    '<p id="data-loading" class="text-center text-indigo-500 animate-pulse">Loading items...</p>';
-
-  try {
-    const response = await fetch(`${BASE_URL}/data`);
-    if (!response.ok) {
-      throw new Error(`HTTP Status: ${response.status}`);
-    }
-    const items = await response.json();
-    renderDataList(items);
-  } catch (error) {
-    dataListContainer.innerHTML = `<p class="text-red-500 p-4 border border-red-300 bg-red-50 rounded-lg">Failed to load data: ${error.message}. Please ensure the server is running and accessible.</p>`;
-  }
-}
 
 async function fetchMostRecentTimestamp() {
   recentTimestampOutput.textContent = "Fetching...";
@@ -95,22 +80,66 @@ async function fetchMostRecentTimestamp() {
 }
 
 // --- Rendering Functions ---
-
-function renderDataList(items) {
-  if (items.length === 0) {
-    dataListContainer.innerHTML =
-      '<p class="text-center text-gray-500 p-4 bg-yellow-50 rounded-lg">The "items" table is empty. Use a POST request to add data.</p>';
+function renderSearchResults(results) {
+  if (results.length === 0) {
+    searchResultsBody.innerHTML =
+      '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-gray-500">No trades found for this item.</td></tr>';
     return;
   }
 
-  dataListContainer.innerHTML = items
+  searchResultsBody.innerHTML = results
+    .map((trade) => {
+      // Format price as dollar value (e.g., $1,234.56)
+      const formattedPrice = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 0,
+      }).format(trade.price);
+
+      return `
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${formattedPrice}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${trade.amount}</td>
+            </tr>
+        `;
+    })
+    .join("");
+}
+
+function renderDailySummaryResults(summary) {
+  if (summary.length === 0) {
+    summaryResultsBody.innerHTML =
+      '<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-gray-500">No summary data found for the selected dates.</td></tr>';
+    return;
+  }
+
+  summaryResultsBody.innerHTML = summary
     .map(
-      (item) => `
-                <div class="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <span class="font-medium text-gray-700">ID: ${item.id} | Name: ${item.name}</span>
-                    <span class="font-bold text-indigo-600 text-lg">$${item.value}</span>
-                </div>
-            `
+      (row) => `
+        <tr>
+            <td class="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${
+              row["itemName"]
+            }</td>
+            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
+              row["isodate"] ?? "-"
+            }</td>
+            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
+              row["buyCount"]
+            }</td>
+            <td class="px-2 py-2 whitespace-nowrap text-sm text-green-600">${formatCurrency(
+              row["avgBuyPrice"]
+            )}</td>
+            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
+              row["sellCount"]
+            }</td>
+            <td class="px-2 py-2 whitespace-nowrap text-sm text-red-600">${formatCurrency(
+              row["avgSellPrice"]
+            )}</td>
+            <td class="px-2 py-2 whitespace-nowrap text-sm font-bold text-indigo-700">${formatCurrency(
+              row.profit
+            )}</td>
+        </tr>
+    `
     )
     .join("");
 }
@@ -121,11 +150,10 @@ function renderDataList(items) {
 fetchRecentBtn.addEventListener("click", fetchMostRecentTimestamp);
 syncDataBtn.addEventListener("click", syncData);
 searchItemDataBtn.addEventListener("click", searchItemData);
-generateSummaryBtn.addEventListener('click', generateDailySummary); // NEW listener
+generateSummaryBtn.addEventListener("click", generateDailySummary); // NEW listener
 
 // Initial load of data when the page loads
 window.onload = () => {
-  fetchAllData();
   fetchMostRecentTimestamp();
 };
 
@@ -155,8 +183,14 @@ async function fetchItemMarket(timestamp) {
   if (!timestamp) {
     timestamp = getMinTimestamp();
   }
-  const itemMarketBaseUrl = "https://api.torn.com/user/3960421?selections=log&cat=11&key=" + API_KEY
-  queryRes = await fetchPartial([], [], timestamp, itemMarketBaseUrl, Number.MAX_SAFE_INTEGER);
+  const itemMarketBaseUrl =
+    "https://api.torn.com/user/3960421?selections=log&cat=11&key=" + API_KEY;
+  queryRes = await fetchPartial(
+    [],
+    [],
+    timestamp,
+    itemMarketBaseUrl
+  );
   updateStatus("Fetch complete, ready to parse");
   return queryRes;
 }
@@ -182,10 +216,13 @@ async function fetchPartial(
   fromTimestamp,
   baseUrl,
   toTimestamp,
-  fetchCount,
+  fetchCount
 ) {
   if (!fetchCount) {
     fetchCount = 0;
+  }
+  if (!toTimestamp) {
+    toTimestamp = Number.MAX_SAFE_INTEGER
   }
   const fetchUrl = `${baseUrl}&from=${fromTimestamp}&to=${toTimestamp}`;
   updateStatus("fetching: " + fetchCount);
@@ -195,9 +232,9 @@ async function fetchPartial(
   for (const [key, value] of Object.entries(jsonRes.log)) {
     minToTimestamp = Math.min(minToTimestamp, value.timestamp);
     value.logId = key;
-    if (value.log === MARKET_BUY) {
+    if (value.log === MARKET_BUY || value.log === BAZAAR_BUY) {
       buyRes.push(value);
-    } else if (value.log === MARKET_SELL) {
+    } else if (value.log === MARKET_SELL || value.log === BAZAAR_SELL) {
       sellRes.push(value);
     }
   }
@@ -209,7 +246,7 @@ async function fetchPartial(
       fromTimestamp,
       baseUrl,
       minToTimestamp - 1,
-      fetchCount + 1,
+      fetchCount + 1
     );
   } else {
     return { sell: sellRes, buy: buyRes };
@@ -228,7 +265,7 @@ async function syncData() {
   await pushToTable(marketData);
 
   updateStatus("Fetching bazaar data");
-  const bazaarData = await fetchBazaar(timestamp);
+  const bazaarData = await fetchBazaar(1760079342);
   const bazaarDataCount = bazaarData.buy.length + bazaarData.sell.length;
   updateStatus("Pushing bazaar data to table");
   await pushToTable(bazaarData);
@@ -284,104 +321,69 @@ async function fetchItems() {
 }
 
 async function searchItemData() {
-    const itemName = searchNameInput.value.trim().toLowerCase();
-    if (!itemName) {
-        searchResultsBody.innerHTML = '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-red-500">Please enter an item name.</td></tr>';
-        return;
+  const itemName = searchNameInput.value.trim().toLowerCase();
+  if (!itemName) {
+    searchResultsBody.innerHTML =
+      '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-red-500">Please enter an item name.</td></tr>';
+    return;
+  }
+
+  searchResultsBody.innerHTML =
+    '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-teal-500 animate-pulse">Searching for trades...</td></tr>';
+
+  try {
+    // Get the itemId
+    const itemIdResponse = await fetch(`${BASE_URL}/item_data/${itemName}`);
+    if (!itemIdResponse.ok) {
+      throw new Error(`HTTP Status: ${itemIdResponse.status}`);
     }
 
-    searchResultsBody.innerHTML = '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-teal-500 animate-pulse">Searching for trades...</td></tr>';
-
-    try {
-        // Get the itemId
-        const itemIdResponse = await fetch(`${BASE_URL}/item_data/${itemName}`); 
-        if (!itemIdResponse.ok) {
-            throw new Error(`HTTP Status: ${itemIdResponse.status}`);
-        }
-        
-        // Assuming response data is an array of {Price: number, Quantity: number} objects
-        const itemIdJson = await itemIdResponse.json(); 
-        const itemId = itemIdJson[itemName]
-        const itemMarketResponse = await fetch(`https://api.torn.com/v2/market/${itemId}/itemmarket?limit=20&offset=0&key=${API_KEY}`)
-        const itemMarketJson = await itemMarketResponse.json();
-        const listings = itemMarketJson["itemmarket"]["listings"];
-        renderSearchResults(listings);
-
-    } catch (error) {
-        searchResultsBody.innerHTML = `<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-red-500">Search failed: ${error.message}. Check your server logs.</td></tr>`;
-    }
-}
-
-
-function renderSearchResults(results) {
-    if (results.length === 0) {
-        searchResultsBody.innerHTML = '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-gray-500">No trades found for this item.</td></tr>';
-        return;
-    }
-
-    searchResultsBody.innerHTML = results.map(trade => {
-        // Format price as dollar value (e.g., $1,234.56)
-        const formattedPrice = new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 0,
-        }).format(trade.price); 
-        
-        return `
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${formattedPrice}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${trade.amount}</td>
-            </tr>
-        `;
-    }).join('');
+    // Assuming response data is an array of {Price: number, Quantity: number} objects
+    const itemIdJson = await itemIdResponse.json();
+    const itemId = itemIdJson[itemName];
+    const itemMarketResponse = await fetch(
+      `https://api.torn.com/v2/market/${itemId}/itemmarket?limit=20&offset=0&key=${API_KEY}`
+    );
+    const itemMarketJson = await itemMarketResponse.json();
+    const listings = itemMarketJson["itemmarket"]["listings"];
+    renderSearchResults(listings);
+  } catch (error) {
+    searchResultsBody.innerHTML = `<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-red-500">Search failed: ${error.message}. Check your server logs.</td></tr>`;
+  }
 }
 
 async function generateDailySummary() {
-    const rawDates = dailyDateInput.value.trim();
-    if (!rawDates) {
-        summaryResultsBody.innerHTML = '<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-red-500">Please enter at least one date.</td></tr>';
-        return;
+  const rawDates = dailyDateInput.value.trim();
+
+  let datesArray;
+  // Convert comma-separated string into an array of trimmed date strings
+
+  if (rawDates) {
+    datesArray = rawDates
+      .split(",")
+      .map((d) => d.trim())
+      .filter((d) => d);
+  }
+
+  summaryResultsBody.innerHTML =
+    '<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-purple-500 animate-pulse">Generating summary...</td></tr>';
+
+  try {
+    const response = datesArray
+      ? await fetch(`${BASE_URL}/daily_summary`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dates: datesArray }),
+        })
+      : await fetch(`${BASE_URL}/total_summary`);
+
+    if (!response.ok) {
+      throw new Error(`HTTP Status: ${response.status}`);
     }
 
-    // Convert comma-separated string into an array of trimmed date strings
-    const datesArray = rawDates.split(',').map(d => d.trim()).filter(d => d);
-
-    summaryResultsBody.innerHTML = '<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-purple-500 animate-pulse">Generating summary...</td></tr>';
-    
-    try {
-        const response = await fetch(`${BASE_URL}/daily_summary`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dates: datesArray })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP Status: ${response.status}`);
-        }
-        
-        const summaryData = await response.json(); 
-        renderDailySummaryResults(summaryData);
-
-    } catch (error) {
-        summaryResultsBody.innerHTML = `<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-red-500">Summary failed: ${error.message}. Check server logs.</td></tr>`;
-    }
-}
-
-function renderDailySummaryResults(summary) {
-    if (summary.length === 0) {
-        summaryResultsBody.innerHTML = '<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-gray-500">No summary data found for the selected dates.</td></tr>';
-        return;
-    }
-
-    summaryResultsBody.innerHTML = summary.map(row => `
-        <tr>
-            <td class="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${row["itemName"]}</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${row["isodate"]}</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${row["buyCount"]}</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-green-600">${formatCurrency(row["avgBuyPrice"])}</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${row["sellCount"]}</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-red-600">${formatCurrency(row["avgSellPrice"])}</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm font-bold text-indigo-700">${formatCurrency(row.profit)}</td>
-        </tr>
-    `).join('');
+    const summaryData = await response.json();
+    renderDailySummaryResults(summaryData);
+  } catch (error) {
+    summaryResultsBody.innerHTML = `<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-red-500">Summary failed: ${error.message}. Check server logs.</td></tr>`;
+  }
 }
