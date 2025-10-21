@@ -224,17 +224,14 @@ generateSummaryBtn.addEventListener("click", generateDailySummary);
 
 dateTodayBtn.addEventListener('click', () => {
     dailyDateInput.value = getDates(1);
-    dailyDateInput.focus();
 });
 
 date3DaysBtn.addEventListener('click', () => {
     dailyDateInput.value = getDates(3);
-    dailyDateInput.focus();
 });
 
 date7DaysBtn.addEventListener('click', () => {
     dailyDateInput.value = getDates(7);
-    dailyDateInput.focus();
 });
 
 apiKeyInput.addEventListener("input", function () {
