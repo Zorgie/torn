@@ -1,6 +1,10 @@
 // The client-side JavaScript uses 'localhost' but will work on your local IP if accessed that way.
 const BASE_URL = "http://192.168.2.44:5000";
 
+// API key section
+const apiKeyInput = document.getElementById('api-key-input');
+const API_KEY_STORAGE_KEY = 'torn_api_key';
+
 const dataListContainer = document.getElementById("data-list-container");
 const recentTimestampOutput = document.getElementById(
   "recent-timestamp-output"
@@ -150,14 +154,23 @@ function renderDailySummaryResults(summary) {
 fetchRecentBtn.addEventListener("click", fetchMostRecentTimestamp);
 syncDataBtn.addEventListener("click", syncData);
 searchItemDataBtn.addEventListener("click", searchItemData);
-generateSummaryBtn.addEventListener("click", generateDailySummary); // NEW listener
+generateSummaryBtn.addEventListener("click", generateDailySummary);
+
+apiKeyInput.addEventListener('input', function() {
+  if (this.value) {
+    localStorage.setItem(API_KEY_STORAGE_KEY, this.value);
+  }
+});
 
 // Initial load of data when the page loads
 window.onload = () => {
   fetchMostRecentTimestamp();
+  const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+  if (savedApiKey) {
+      apiKeyInput.value = savedApiKey;
+  }
 };
 
-const API_KEY = "ZtBwt22hMlryQVKM";
 const MARKET_BUY = 1112;
 const MARKET_SELL = 1113;
 const CATEGORY_MARKET = 11;
@@ -179,12 +192,16 @@ function getMinTimestamp() {
   return minTimestamp;
 }
 
+function apiKey() {
+  return apiKeyInput.value;
+}
+
 async function fetchItemMarket(timestamp) {
   if (!timestamp) {
     timestamp = getMinTimestamp();
   }
   const itemMarketBaseUrl =
-    "https://api.torn.com/user/3960421?selections=log&cat=11&key=" + API_KEY;
+    "https://api.torn.com/user/3960421?selections=log&cat=11&key=" + apiKey();
   queryRes = await fetchPartial(
     [],
     [],
@@ -204,7 +221,7 @@ async function fetchBazaar(timestamp) {
   if (!timestamp) {
     timestamp = getMinTimestamp();
   }
-  const bazaarUrl = `https://api.torn.com/user/3960421?selections=log&cat=${CATEGORY_BAZAAR}&key=${API_KEY}`;
+  const bazaarUrl = `https://api.torn.com/user/3960421?selections=log&cat=${CATEGORY_BAZAAR}&key=${apiKey()}`;
   queryRes = await fetchPartial([], [], timestamp, bazaarUrl);
   updateStatus("Fetch complete, ready to parse");
   return queryRes;
@@ -256,7 +273,7 @@ async function fetchPartial(
 async function syncData() {
   let res = await fetch(`${BASE_URL}/most_recent`);
   const jsonTimestamp = await res.json();
-  const timestamp = jsonTimestamp["most_recent_timestamp"];
+  const timestamp = jsonTimestamp["most_recent_timestamp"] + 1;
 
   updateStatus("Fetching market data");
   const marketData = await fetchItemMarket(timestamp);
@@ -265,7 +282,7 @@ async function syncData() {
   await pushToTable(marketData);
 
   updateStatus("Fetching bazaar data");
-  const bazaarData = await fetchBazaar(1760079342);
+  const bazaarData = await fetchBazaar(timestamp);
   const bazaarDataCount = bazaarData.buy.length + bazaarData.sell.length;
   updateStatus("Pushing bazaar data to table");
   await pushToTable(bazaarData);
@@ -276,6 +293,7 @@ async function syncData() {
 
 async function pushToTable(items) {
   const data = generateTradeJson(items);
+  data["key"] = apiKey();
   // Need to be on the format {'trades': [{id: string, itemId: int, tradeType: string, quantity: int, price: int, timestamp: int}]}
   const response = await fetch(`${BASE_URL}/data`, {
     method: "POST",
@@ -342,7 +360,7 @@ async function searchItemData() {
     const itemIdJson = await itemIdResponse.json();
     const itemId = itemIdJson[itemName];
     const itemMarketResponse = await fetch(
-      `https://api.torn.com/v2/market/${itemId}/itemmarket?limit=20&offset=0&key=${API_KEY}`
+      `https://api.torn.com/v2/market/${itemId}/itemmarket?limit=20&offset=0&key=${apiKey()}`
     );
     const itemMarketJson = await itemMarketResponse.json();
     const listings = itemMarketJson["itemmarket"]["listings"];

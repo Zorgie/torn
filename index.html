@@ -18,13 +18,23 @@
 <body class="bg-gray-100 font-sans p-6 md:p-10 min-h-screen">
     <div class="max-w-4xl mx-auto">
         <header class="text-center mb-10">
-            <h1 class="text-4xl font-extrabold text-indigo-700">Database API Client</h1>
-            <p class="text-lg text-gray-500 mt-2">Front-end served by Flask (Client on `http://localhost:5000/`)</p>
+            <h1 class="text-4xl font-extrabold text-indigo-700">DongGong's Torn Utility</h1>
         </header>
+
+         <!-- API Key Configuration Section (NEW) -->
+        <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-yellow-500">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">API Key Configuration</h2>
+            <div class="flex flex-col md:flex-row gap-4 items-center">
+                <label for="api-key-input" class="text-sm font-medium text-gray-700 w-24">API Key:</label>
+                <input type="password" id="api-key-input" placeholder="Enter your API Key here" 
+                       class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500 font-mono">
+            </div>
+            <p id="api-key-status" class="mt-2 text-xs text-gray-500 text-right">Key will be saved automatically to local storage.</p>
+        </section>
 
         <!-- Most Recent Timestamp Section -->
         <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-indigo-500">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Market Data Query (GET /most_recent)</h2>
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Most recent trade data stored</h2>
             <div class="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
                 <div id="recent-timestamp-output" class="text-xl font-mono text-green-700 bg-green-50 p-3 rounded-lg w-full md:w-auto text-center md:text-left shadow-inner">
                     Awaiting data...

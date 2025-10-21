@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS # Import the CORS extension
+from flask import abort, request
 import time 
 import os # Import os for path handling
 import sqlite3
@@ -67,6 +68,9 @@ def add_data():
     
     item_data = request.get_json()
 
+    key = item_data.get('key')
+    if key != "ZtBwt22hMlryQVKM":
+        return jsonify({"error": "invalid key"}), 500
     trades = item_data.get('trades')
     
     conn = get_db_connection()
