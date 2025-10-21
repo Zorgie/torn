@@ -2,8 +2,8 @@
 const BASE_URL = "http://192.168.2.44:5000";
 
 // API key section
-const apiKeyInput = document.getElementById('api-key-input');
-const API_KEY_STORAGE_KEY = 'torn_api_key';
+const apiKeyInput = document.getElementById("api-key-input");
+const API_KEY_STORAGE_KEY = "torn_api_key";
 
 const dataListContainer = document.getElementById("data-list-container");
 const recentTimestampOutput = document.getElementById(
@@ -22,6 +22,10 @@ const searchResultsBody = document.getElementById("search-results-body");
 const dailyDateInput = document.getElementById("daily-date-input");
 const generateSummaryBtn = document.getElementById("generate-summary-btn");
 const summaryResultsBody = document.getElementById("summary-results-body");
+const dateTodayBtn = document.getElementById('date-today-btn');
+const date3DaysBtn = document.getElementById('date-3days-btn');
+const date7DaysBtn = document.getElementById('date-7days-btn');
+
 
 // --- Utility Functions ---
 
@@ -49,8 +53,36 @@ function formatCurrency(value) {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 0,
-    maximumFractionDigits : 0,
+    maximumFractionDigits: 0,
   }).format(value);
+}
+
+/**
+ * Formats a Date object into a YYYY-MM-DD string.
+ * @param {Date} date
+ * @returns {string} Formatted date string.
+ */
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Gets a comma-separated string of dates from today going back N days (including today).
+ * @param {number} numberOfDays - The total number of days to include (e.g., 3 for today, yesterday, day before).
+ * @returns {string} Comma-separated date string (YYYY-MM-DD, YYYY-MM-DD).
+ */
+function getDates(numberOfDays) {
+  const dates = [];
+  for (let i = 0; i < numberOfDays; i++) {
+    const date = new Date();
+    // Set the date back i days
+    date.setDate(date.getDate() - i);
+    dates.push(formatDate(date));
+  }
+  return dates.join(", ");
 }
 
 // --- API Call Handlers ---
@@ -117,35 +149,69 @@ function renderDailySummaryResults(summary) {
     return;
   }
 
-  summaryResultsBody.innerHTML = summary
+  // Calculate Totals for relevant columns
+  const totals = summary.reduce(
+    (acc, row) => {
+      acc.totalBuyCount += row["buyCount"];
+      acc.totalSellCount += row["sellCount"];
+      acc.totalProfit += row.profit;
+      return acc;
+    },
+    { totalBuyCount: 0, totalSellCount: 0, totalProfit: 0 }
+  );
+
+  // Map detail rows to HTML
+  const detailRows = summary
     .map(
       (row) => `
-        <tr>
-            <td class="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${
-              row["itemName"]
-            }</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
-              row["isodate"] ?? "-"
-            }</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
-              row["buyCount"]
-            }</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-green-600">${formatCurrency(
-              row["avgBuyPrice"]
-            )}</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
-              row["sellCount"]
-            }</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm text-red-600">${formatCurrency(
-              row["avgSellPrice"]
-            )}</td>
-            <td class="px-2 py-2 whitespace-nowrap text-sm font-bold text-indigo-700">${formatCurrency(
-              row.profit
-            )}</td>
-        </tr>
-    `
+      <tr>
+          <td class="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${
+            row["itemName"]
+          }</td>
+          <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
+            row["isodate"]
+          }</td>
+          <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
+            row["buyCount"]
+          }</td>
+          <td class="px-2 py-2 whitespace-nowrap text-sm text-green-600">${formatCurrency(
+            row["avgBuyPrice"]
+          )}</td>
+          <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
+            row["sellCount"]
+          }</td>
+          <td class="px-2 py-2 whitespace-nowrap text-sm text-red-600">${formatCurrency(
+            row["avgSellPrice"]
+          )}</td>
+          <td class="px-2 py-2 whitespace-nowrap text-sm font-bold text-indigo-700">${formatCurrency(
+            row.profit
+          )}</td>
+      </tr>
+  `
     )
     .join("");
+
+  // Create Total Row HTML
+  // Note: Avg prices are shown as '--' as summing averages is generally not meaningful here.
+  const totalRow = `
+      <tr class="bg-indigo-50 font-extrabold border-t-2 border-indigo-500">
+          <td class="px-2 py-2 whitespace-nowrap text-base text-indigo-800" colspan="2">TOTALS</td>
+          <td class="px-2 py-2 whitespace-nowrap text-base text-gray-700">${
+            totals.totalBuyCount
+          }</td>
+          <td class="px-2 py-2 whitespace-nowrap text-base text-gray-700">--</td>
+          <td class="px-2 py-2 whitespace-nowrap text-base text-gray-700">${
+            totals.totalSellCount
+          }</td>
+          <td class="px-2 py-2 whitespace-nowrap text-base text-gray-700">--</td>
+          <td class="px-2 py-2 whitespace-nowrap text-base text-indigo-800">${formatCurrency(
+            totals.totalProfit
+          )}</td>
+      </tr>
+  `;
+
+  // Combine and render all rows
+  summaryResultsBody.innerHTML = detailRows + totalRow;
 }
 
 // --- Initialization ---
@@ -156,7 +222,22 @@ syncDataBtn.addEventListener("click", syncData);
 searchItemDataBtn.addEventListener("click", searchItemData);
 generateSummaryBtn.addEventListener("click", generateDailySummary);
 
-apiKeyInput.addEventListener('input', function() {
+dateTodayBtn.addEventListener('click', () => {
+    dailyDateInput.value = getDates(1);
+    dailyDateInput.focus();
+});
+
+date3DaysBtn.addEventListener('click', () => {
+    dailyDateInput.value = getDates(3);
+    dailyDateInput.focus();
+});
+
+date7DaysBtn.addEventListener('click', () => {
+    dailyDateInput.value = getDates(7);
+    dailyDateInput.focus();
+});
+
+apiKeyInput.addEventListener("input", function () {
   if (this.value) {
     localStorage.setItem(API_KEY_STORAGE_KEY, this.value);
   }
@@ -167,7 +248,7 @@ window.onload = () => {
   fetchMostRecentTimestamp();
   const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
   if (savedApiKey) {
-      apiKeyInput.value = savedApiKey;
+    apiKeyInput.value = savedApiKey;
   }
 };
 
@@ -202,12 +283,7 @@ async function fetchItemMarket(timestamp) {
   }
   const itemMarketBaseUrl =
     "https://api.torn.com/user/3960421?selections=log&cat=11&key=" + apiKey();
-  queryRes = await fetchPartial(
-    [],
-    [],
-    timestamp,
-    itemMarketBaseUrl
-  );
+  queryRes = await fetchPartial([], [], timestamp, itemMarketBaseUrl);
   updateStatus("Fetch complete, ready to parse");
   return queryRes;
 }
@@ -239,7 +315,7 @@ async function fetchPartial(
     fetchCount = 0;
   }
   if (!toTimestamp) {
-    toTimestamp = Number.MAX_SAFE_INTEGER
+    toTimestamp = Number.MAX_SAFE_INTEGER;
   }
   const fetchUrl = `${baseUrl}&from=${fromTimestamp}&to=${toTimestamp}`;
   updateStatus("fetching: " + fetchCount);
