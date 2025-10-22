@@ -162,6 +162,14 @@ def get_daily_summary():
     
     return jsonify([dict(ix) for ix in results])
 
+@app.route('/profit_by_date', methods=['GET'])
+def get_profit_by_date():
+    conn = get_db_connection()
+    results = conn.execute("SELECT isodate, sum(profit) as profit FROM DAILY_SUMMARY GROUP BY 1;").fetchall()
+    conn.close()
+    
+    return jsonify([dict(ix) for ix in results])
+
 @app.route('/total_summary', methods=['GET'])
 def get_total_summary():
     query = '''

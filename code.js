@@ -22,10 +22,17 @@ const searchResultsBody = document.getElementById("search-results-body");
 const dailyDateInput = document.getElementById("daily-date-input");
 const generateSummaryBtn = document.getElementById("generate-summary-btn");
 const summaryResultsBody = document.getElementById("summary-results-body");
-const dateTodayBtn = document.getElementById('date-today-btn');
-const date3DaysBtn = document.getElementById('date-3days-btn');
-const date7DaysBtn = document.getElementById('date-7days-btn');
+const dateTodayBtn = document.getElementById("date-today-btn");
+const date3DaysBtn = document.getElementById("date-3days-btn");
+const date7DaysBtn = document.getElementById("date-7days-btn");
 
+// CHART SELECTORS
+const startDateInput = document.getElementById("start-date-input");
+const endDateInput = document.getElementById("end-date-input");
+const fetchProfitBtn = document.getElementById("fetch-profit-btn");
+const chartStatus = document.getElementById("chart-status");
+const profitChartCanvas = document.getElementById("profit-chart");
+let profitChartInstance = null; // To hold the Chart.js instance
 
 // --- Utility Functions ---
 
@@ -38,7 +45,6 @@ function showError(elementId, message) {
   }
 }
 
-// --- Utility Functions ---
 function showError(elementId, message) {
   const element = document.getElementById(elementId);
   if (element) {
@@ -55,6 +61,47 @@ function formatCurrency(value) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+/**
+ * Formats a Date object into a YYYY-MM-DD string.
+ * @param {Date} date
+ * @returns {string} Formatted date string.
+ */
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Gets a comma-separated string of dates from today going back N days (including today).
+ * @param {number} numberOfDays - The total number of days to include (e.g., 3 for today, yesterday, day before).
+ * @returns {string} Comma-separated date string (YYYY-MM-DD, YYYY-MM-DD).
+ */
+function getDates(numberOfDays) {
+  const dates = [];
+  for (let i = 0; i < numberOfDays; i++) {
+    const date = new Date();
+    // Set the date back i days
+    date.setDate(date.getDate() - i);
+    dates.push(formatDate(date));
+  }
+  return dates.join(", ");
+}
+
+/**
+ * Sets a default date range for the chart inputs (today to N days ago).
+ * @param {number} days - Number of days to look back.
+ */
+function setDefaultDateRange(days = 30) {
+  const today = new Date();
+  const pastDate = new Date();
+  pastDate.setDate(today.getDate() - days + 1); // +1 to include the current day
+
+  endDateInput.value = formatDate(today);
+  startDateInput.value = formatDate(pastDate);
 }
 
 /**
@@ -214,6 +261,101 @@ function renderDailySummaryResults(summary) {
   summaryResultsBody.innerHTML = detailRows + totalRow;
 }
 
+function renderProfitChart(labels, profits) {
+  if (profitChartInstance) {
+    profitChartInstance.destroy();
+  }
+
+  if (labels.length === 0) {
+    // The status message is set by the calling function (fetchProfitByDate)
+    return;
+  }
+
+  chartStatus.textContent = `Displaying profit trend for ${labels.length} days.`;
+  chartStatus.classList.remove("text-red-500");
+  chartStatus.classList.add("text-gray-500");
+
+  // Find max profit for positive color gradient
+  const maxProfit = Math.max(...profits.filter((p) => !isNaN(p) && p > 0));
+  // Set the primary line color
+  const primaryColor = "#ea580c"; // orange-600
+
+  const ctx = profitChartCanvas.getContext("2d");
+
+  // Create the Chart.js instance
+  profitChartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: "Daily Profit",
+          data: profits,
+          borderColor: primaryColor,
+          backgroundColor: "rgba(249, 115, 22, 0.1)", // light orange fill
+          borderWidth: 2,
+          pointBackgroundColor: primaryColor,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.4, // Smooth line curve
+          spanGaps: false, // Skip NaN points (no line drawn)
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: "Date",
+          },
+          // Use 'category' for simple date strings
+          type: "category",
+          ticks: {
+            maxRotation: 45,
+            minRotation: 45,
+          },
+        },
+        y: {
+          title: {
+            display: true,
+            text: "Profit (USD)",
+          },
+          beginAtZero: false, // Allow negative profits to show correctly
+          ticks: {
+            callback: function (value) {
+              return formatCurrency(value);
+            },
+          },
+        },
+      },
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              let label = context.dataset.label || "";
+              if (label) {
+                label += ": ";
+              }
+              if (!isNaN(context.parsed.y) && context.parsed.y !== null) {
+                label += formatCurrency(context.parsed.y);
+              } else {
+                label += "No Data";
+              }
+              return label;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 // --- Initialization ---
 
 // Set up event listeners
@@ -222,16 +364,19 @@ syncDataBtn.addEventListener("click", syncData);
 searchItemDataBtn.addEventListener("click", searchItemData);
 generateSummaryBtn.addEventListener("click", generateDailySummary);
 
-dateTodayBtn.addEventListener('click', () => {
-    dailyDateInput.value = getDates(1);
+// CHART EVENT LISTENER
+fetchProfitBtn.addEventListener("click", fetchProfitByDate);
+
+dateTodayBtn.addEventListener("click", () => {
+  dailyDateInput.value = getDates(1);
 });
 
-date3DaysBtn.addEventListener('click', () => {
-    dailyDateInput.value = getDates(3);
+date3DaysBtn.addEventListener("click", () => {
+  dailyDateInput.value = getDates(3);
 });
 
-date7DaysBtn.addEventListener('click', () => {
-    dailyDateInput.value = getDates(7);
+date7DaysBtn.addEventListener("click", () => {
+  dailyDateInput.value = getDates(7);
 });
 
 apiKeyInput.addEventListener("input", function () {
@@ -242,11 +387,14 @@ apiKeyInput.addEventListener("input", function () {
 
 // Initial load of data when the page loads
 window.onload = () => {
-  fetchMostRecentTimestamp();
   const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
   if (savedApiKey) {
     apiKeyInput.value = savedApiKey;
   }
+
+  // Set default date range for chart and initial data load for other sections
+  setDefaultDateRange(30);
+  fetchMostRecentTimestamp();
 };
 
 const MARKET_BUY = 1112;
@@ -477,4 +625,52 @@ async function generateDailySummary() {
   } catch (error) {
     summaryResultsBody.innerHTML = `<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-red-500">Summary failed: ${error.message}. Check server logs.</td></tr>`;
   }
+}
+
+async function fetchProfitByDate() {
+    chartStatus.textContent = 'Fetching and processing profit data...';
+    chartStatus.classList.remove('text-red-500', 'text-gray-500');
+    chartStatus.classList.add('text-orange-500');
+    
+    try {
+        const response = await fetch(`${BASE_URL}/profit_by_date`);
+        if (!response.ok) {
+            throw new Error(`HTTP Status: ${response.status}`);
+        }
+        
+        const rawData = await response.json(); 
+        
+        // Client-side filtering based on date inputs
+        const startDateStr = startDateInput.value;
+        const endDateStr = endDateInput.value;
+
+        if (!startDateStr || !endDateStr) {
+              chartStatus.textContent = 'Please select both a start and end date.';
+              chartStatus.classList.remove('text-orange-500');
+              chartStatus.classList.add('text-red-500');
+              return;
+        }
+
+        const filteredData = rawData.filter(item => {
+            return item.isodate >= startDateStr && item.isodate <= endDateStr;
+        }).sort((a, b) => a.isodate.localeCompare(b.isodate)); // Ensure chronological order
+
+        if (filteredData.length === 0) {
+            chartStatus.textContent = 'No profit data found for the selected date range.';
+            renderProfitChart([], []); // Clear chart
+            return;
+        }
+
+        const labels = filteredData.map(item => item.isodate);
+        // Use NaN for null values to skip them in the line chart rendering
+        const profits = filteredData.map(item => item.profit === null ? NaN : item.profit);
+
+        renderProfitChart(labels, profits);
+
+    } catch (error) {
+        chartStatus.textContent = `Chart fetching failed: ${error.message}. Check server logs.`;
+        chartStatus.classList.remove('text-orange-500');
+        chartStatus.classList.add('text-red-500');
+        renderProfitChart([], []); // Clear chart on error
+    }
 }

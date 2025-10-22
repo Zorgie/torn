@@ -7,6 +7,8 @@
     <link rel="icon" type="image/x-icon" href="https://profileimages.torn.com/377X283_cb973377-3d24-4d5b-afb8-1777edeeacd9-3960421.png?v=29192697673">
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Chart.js for visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <style>
         /* Custom Scrollbar for better UX */
         ::-webkit-scrollbar { width: 8px; }
@@ -83,7 +85,7 @@
             </div>
         </section>
 
-        <!-- Daily Summary Section (NEW) -->
+        <!-- Daily Summary Section -->
         <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-purple-500">
             <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Daily Trade Summary (POST /daily_summary)</h2>
             <p class="text-sm text-gray-500 mb-4">Enter one or more dates separated by commas (e.g., YYYY-MM-DD,YYYY-MM-DD).</p>
@@ -123,6 +125,28 @@
                     </tbody>
                 </table>
             </div>
+        </section>
+
+        <!-- Profit Chart Section -->
+        <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-orange-500">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Profit Trend Chart (GET /profit_by_date)</h2>
+            <p class="text-sm text-gray-500 mb-4">View daily profit aggregated across all items for a custom date range.</p>
+            <div class="flex flex-col gap-4 mb-6">
+                <!-- Date Range Input -->
+                <div class="flex flex-col md:flex-row gap-4">
+                    <input type="date" id="start-date-input" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500" title="Start Date">
+                    <input type="date" id="end-date-input" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500" title="End Date">
+                    <button id="fetch-profit-btn" class="px-6 py-3 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 transition duration-150 shadow-md transform hover:scale-105">
+                        Filter & Draw Chart
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Chart Container -->
+            <div class="relative h-96">
+                <canvas id="profit-chart"></canvas>
+            </div>
+            <p id="chart-status" class="mt-4 text-sm text-center text-gray-500">Set a date range and click 'Filter & Draw Chart'.</p>
         </section>
     </div>
   <script src="http://192.168.2.44:5000/code"></script>
