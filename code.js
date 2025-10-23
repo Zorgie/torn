@@ -34,6 +34,11 @@ const chartStatus = document.getElementById("chart-status");
 const profitChartCanvas = document.getElementById("profit-chart");
 let profitChartInstance = null; // To hold the Chart.js instance
 
+// Add global items store and storage key
+let items = {}; // will hold the items JSON (id -> {name,...})
+const ITEMS_STORAGE_KEY = "torn_items_v1";
+const ITEMS_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days TTL (optional)
+
 // --- Utility Functions ---
 
 function showError(elementId, message) {
@@ -393,8 +398,22 @@ window.onload = () => {
   }
 
   // Set default date range for chart and initial data load for other sections
-  setDefaultDateRange(30);
+  setDefaultDateRange(14);
   fetchMostRecentTimestamp();
+  
+  // Try populate from cache immediately, then refresh in background
+  const cached = readCachedItems();
+  if (cached) {
+    items = cached;
+    populateItemDatalist(items);
+    // Fetch fresh copy in background
+    fetchItems(true).catch((e) =>
+      console.warn("Background items refresh failed:", e)
+    );
+  } else {
+    // No cache -> fetch now
+    fetchItems().catch((e) => console.warn("Initial items fetch failed:", e));
+  }
 };
 
 const MARKET_BUY = 1112;
@@ -548,43 +567,187 @@ function createTradeRequest(item, type) {
   };
 }
 
+// Helper to truncate long text with ellipses
+function ellipsize(text, maxLen = 60) {
+  if (!text) return "";
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 3).trim() + "...";
+}
+
+// Populate datalist element for item name autocomplete.
+// Accepts either the items object returned by the Torn API (id -> itemObj)
+// or an array of names.
+// Now includes market_value and truncated description in the option value
+function populateItemDatalist(itemsObjOrArray) {
+  if (!dataListContainer) return;
+  // Clear previous options
+  dataListContainer.innerHTML = "";
+
+  const fragment = document.createDocumentFragment();
+
+  if (Array.isArray(itemsObjOrArray)) {
+    for (const name of itemsObjOrArray) {
+      const opt = document.createElement("option");
+      opt.value = name; // simple names
+      fragment.appendChild(opt);
+    }
+  } else if (itemsObjOrArray && typeof itemsObjOrArray === "object") {
+    // Expect object keyed by id with { name, market_value, description, ... } entries
+    for (const [id, itemObj] of Object.entries(itemsObjOrArray)) {
+      const name = (itemObj.name || itemObj.item || itemObj.title || "").trim();
+      if (!name) continue;
+      const marketVal = itemObj.market_value != null ? formatCurrency(itemObj.market_value) : "";
+      const desc = ellipsize(itemObj.description || "", 80);
+
+      const inputValue = name;
+      // label shown in the dropdown (browsers that support it) includes the description
+      const dropdownLabel = desc ? `${inputValue} - ${marketVal} — ${desc}` : inputValue;
+
+      const opt = document.createElement("option");
+      opt.value = inputValue;
+      // prefer label for richer dropdown display; provide title as tooltip fallback
+      opt.label = dropdownLabel;
+      opt.title = dropdownLabel;
+      opt.dataset.itemId = id;
+      fragment.appendChild(opt);
+    }
+  }
+
+  dataListContainer.appendChild(fragment);
+}
+
+// Helper to read cached items with optional TTL metadata
+function readCachedItems() {
+  try {
+    const raw = localStorage.getItem(ITEMS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.data) return null;
+    // Optional TTL check
+    if (parsed.ts && Date.now() - parsed.ts > ITEMS_CACHE_TTL_MS) {
+      return null;
+    }
+    return parsed.data;
+  } catch (e) {
+    console.warn("Failed to read cached items:", e);
+    return null;
+  }
+}
+
+// Helper to write items to cache with timestamp
+function writeCachedItems(data) {
+  try {
+    localStorage.setItem(
+      ITEMS_STORAGE_KEY,
+      JSON.stringify({
+        ts: Date.now(),
+        data,
+      })
+    );
+  } catch (e) {
+    console.warn("Failed to write cached items:", e);
+  }
+}
+
 // Fetches all the different item types for local db storage
-async function fetchItems() {
+async function fetchItems(forceRefresh = false) {
   updateStatus("Fetching items");
-  const fetchItemsUrl =
-    "https://api.torn.com/torn/?selections=items&key=ZtBwt22hMlryQVKM";
-  var res = await fetch(fetchItemsUrl);
-  var jsonRes = await res.json();
-  updateStatus("items fetched");
-  items = jsonRes;
+
+  // Try cache first unless forced
+  if (!forceRefresh) {
+    const cached = readCachedItems();
+    if (cached) {
+      items = cached;
+      populateItemDatalist(items);
+      updateStatus("Loaded items from cache");
+      // Still refresh in background (non-blocking)
+      fetchItems(true).catch((e) =>
+        console.warn("Background refresh of items failed:", e)
+      );
+      return;
+    }
+  }
+  updateStatus("Fetching items from Torn API");
+  const fetchItemsUrl = `https://api.torn.com/torn/?selections=items&key=${apiKey()}`;
+  const res = await fetch(fetchItemsUrl);
+  const jsonRes = await res.json();
+  // Torn returns { items: { id: { name, ... }, ... } } - accept either shape
+  items = jsonRes.items || jsonRes || {};
+  // cache and populate datalist so autocomplete works immediately next time
+  writeCachedItems(items);
+  populateItemDatalist(items);
+  updateStatus("Items fetched and cached");
 }
 
 async function searchItemData() {
-  const itemName = searchNameInput.value.trim().toLowerCase();
-  if (!itemName) {
+  const rawInput = searchNameInput.value.trim();
+  if (!rawInput) {
     searchResultsBody.innerHTML =
       '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-red-500">Please enter an item name.</td></tr>';
     return;
   }
 
+  // If the input is a composite value produced by the datalist (e.g. "Hammer — $30 — A small..."),
+  // extract the actual item name before doing lookups.
+  const candidateName = rawInput.split("—")[0].trim();
+  const lookupName = candidateName.toLowerCase();
+
   searchResultsBody.innerHTML =
     '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-teal-500 animate-pulse">Searching for trades...</td></tr>';
 
   try {
-    // Get the itemId
-    const itemIdResponse = await fetch(`${BASE_URL}/item_data/${itemName}`);
-    if (!itemIdResponse.ok) {
-      throw new Error(`HTTP Status: ${itemIdResponse.status}`);
+    // Try to resolve itemId from cached items first
+    let itemId = null;
+
+    if (items && typeof items === "object" && Object.keys(items).length > 0) {
+      // Try exact name match (case-insensitive)
+      for (const [id, obj] of Object.entries(items)) {
+        const name = (obj.name || obj.item || obj.title || "").toLowerCase();
+        if (name === lookupName) {
+          itemId = id;
+          break;
+        }
+      }
+
+      // If no exact match, try substring match
+      if (!itemId) {
+        for (const [id, obj] of Object.entries(items)) {
+          const name = (obj.name || obj.item || obj.title || "").toLowerCase();
+          if (name.includes(lookupName)) {
+            itemId = id;
+            break;
+          }
+        }
+      }
     }
 
-    // Assuming response data is an array of {Price: number, Quantity: number} objects
-    const itemIdJson = await itemIdResponse.json();
-    const itemId = itemIdJson[itemName];
+    // Fallback to server lookup if not found in cache
+    if (!itemId) {
+      const itemIdResponse = await fetch(
+        `${BASE_URL}/item_data/${encodeURIComponent(lookupName)}`
+      );
+      if (!itemIdResponse.ok) {
+        throw new Error(`HTTP Status: ${itemIdResponse.status}`);
+      }
+      const itemIdJson = await itemIdResponse.json();
+      itemId = itemIdJson[lookupName];
+    }
+
+    if (!itemId) {
+      searchResultsBody.innerHTML =
+        `<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-red-500">Item "${candidateName}" not found in cache or server.</td></tr>`;
+      return;
+    }
+
+    // Fetch market listings using the resolved itemId
     const itemMarketResponse = await fetch(
       `https://api.torn.com/v2/market/${itemId}/itemmarket?limit=20&offset=0&key=${apiKey()}`
     );
+    if (!itemMarketResponse.ok) {
+      throw new Error(`HTTP Status: ${itemMarketResponse.status}`);
+    }
     const itemMarketJson = await itemMarketResponse.json();
-    const listings = itemMarketJson["itemmarket"]["listings"];
+    const listings = itemMarketJson?.itemmarket?.listings || [];
     renderSearchResults(listings);
   } catch (error) {
     searchResultsBody.innerHTML = `<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-red-500">Search failed: ${error.message}. Check your server logs.</td></tr>`;
