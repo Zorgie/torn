@@ -155,7 +155,7 @@ async function fetchMostRecentTimestamp() {
     if (timestamp !== null) {
       // Format the UNIX timestamp for better readability
       const date = new Date(timestamp * 1000);
-      recentTimestampOutput.textContent = `Latest Timestamp: ${date.toLocaleString()}`;
+      recentTimestampOutput.textContent = `${date.toLocaleString()}`;
     } else {
       recentTimestampOutput.textContent = "No trade data found in database.";
     }
@@ -527,7 +527,7 @@ async function syncData() {
   updateStatus("Pushing bazaar data to table");
   await pushToTable(bazaarData);
   updateStatus(
-    `Pushed ${marketDataCount} new trades from market, ${bazaarDataCount} from bazaar`
+    `Market: ${marketDataCount}, Bazaar: ${bazaarDataCount}`
   );
 }
 
