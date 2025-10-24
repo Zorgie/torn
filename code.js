@@ -854,7 +854,6 @@ async function fetchProfitByDate() {
  */
 async function fetchMyListings() {
   if (!apiKey()) throw new Error("API key required");
-  const userId = 3960421; // keep consistent with other calls in this project
   const url = `https://api.torn.com/v2/user/itemmarket?key=${apiKey()}`;
 
   const res = await fetch(url);
@@ -936,6 +935,7 @@ async function findUndercuts() {
       const marketUrl = `https://api.torn.com/v2/market/${itemId}/itemmarket?limit=50&key=${apiKey()}`;
       let marketJson = null;
       try {
+        await sleep(600); // To manage the rate limit of 100 requests per minute
         const resp = await fetch(marketUrl);
         if (!resp.ok) throw new Error(resp.status);
         marketJson = await resp.json();
