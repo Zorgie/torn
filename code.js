@@ -1110,7 +1110,7 @@ async function findUndercuts() {
 }
 
 /**
- * Render results array:
+ * Render results array with expandable undercut lists
  * [{ itemId, name, myPrice, myQty, undercuts: [{price, quantity, seller_id}] }]
  */
 function renderUndercutResults(results) {
@@ -1120,7 +1120,7 @@ function renderUndercutResults(results) {
   }
 
   const rows = results
-    .map((r) => {
+    .map((r, index) => {
       const undercutCount = r.undercuts.length;
       const undercutTotalAmount = r.undercuts.reduce((sum, u) => sum + u.quantity, 0);
       const undercutSummary =
@@ -1128,17 +1128,38 @@ function renderUndercutResults(results) {
           ? `<span class="text-sm text-gray-500">None</span>`
           : `<span class="text-sm text-red-600 font-medium">${undercutTotalAmount} items in ${undercutCount} listings</span>`;
 
-      // Create details list (limited to first 10 to keep compact)
-      const details =
-        r.undercuts.length === 0
-          ? ""
-          : `<div class="mt-2 text-xs text-gray-700 space-y-1">${r.undercuts
-              .slice(0, 10)
-              .map(
-                (u) =>
-                  `<div class="flex justify-between"><span>${formatCurrency(u.price)} — x${u.quantity}</span></div>`
-              )
-              .join("")}${r.undercuts.length > 10 ? `<div class="text-xs text-gray-400 mt-1">...and ${r.undercuts.length - 10} more</div>` : ""}</div>`;
+      const initialCount = 6;
+      const hasMore = r.undercuts.length > initialCount;
+      
+      // Create details list with expand/collapse functionality
+      const details = r.undercuts.length === 0 
+        ? "" 
+        : `<div class="mt-2 text-xs text-gray-700 space-y-1">
+            ${r.undercuts
+              .slice(0, initialCount)
+              .map(u => `
+                <div class="flex justify-between">
+                  <span>${formatCurrency(u.price)} — x${u.quantity}</span>
+                </div>
+              `).join("")}
+            
+            ${hasMore ? `
+              <div class="text-xs text-gray-400 mt-1 cursor-pointer hover:text-indigo-600" 
+                   onclick="toggleUndercutExpand(${index})" 
+                   id="expand-toggle-${index}">
+                ▼ Show ${r.undercuts.length - initialCount} more
+              </div>
+              <div id="expanded-content-${index}" class="hidden space-y-1">
+                ${r.undercuts
+                  .slice(initialCount)
+                  .map(u => `
+                    <div class="flex justify-between">
+                      <span>${formatCurrency(u.price)} — x${u.quantity}</span>
+                    </div>
+                  `).join("")}
+              </div>` 
+            : ""}
+           </div>`;
 
       return `
         <tr>
@@ -1153,3 +1174,24 @@ function renderUndercutResults(results) {
 
   undercutResultsBody.innerHTML = rows;
 }
+
+/**
+ * Toggle expanded content visibility for a specific undercut listing
+ */
+function toggleUndercutExpand(index) {
+  const toggle = document.getElementById(`expand-toggle-${index}`);
+  const content = document.getElementById(`expanded-content-${index}`);
+  
+  if (content.classList.contains('hidden')) {
+    content.classList.remove('hidden');
+    toggle.innerHTML = '▲ Show less';
+    toggle.classList.add('text-indigo-600');
+  } else {
+    content.classList.add('hidden');
+    toggle.innerHTML = `▼ Show ${content.children.length} more`;
+    toggle.classList.remove('text-indigo-600');
+  }
+}
+
+// Make toggleUndercutExpand available globally
+window.toggleUndercutExpand = toggleUndercutExpand;
