@@ -320,8 +320,8 @@ function renderProfitChart(labels, profits) {
           pointBackgroundColor: primaryColor,
           pointRadius: 4,
           pointHoverRadius: 6,
-          tension: 0.4, // Smooth line curve
-          spanGaps: false, // Skip NaN points (no line drawn)
+          tension: 0.2, // Smooth line curve
+          spanGaps: true, // Skip NaN points (no line drawn)
         },
       ],
     },
