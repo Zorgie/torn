@@ -186,25 +186,19 @@ async function fetchMostRecentTimestamp() {
 function renderSearchResults(results) {
   if (results.length === 0) {
     searchResultsBody.innerHTML =
-      '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-gray-500">No trades found for this item.</td></tr>';
+      '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-gray-300">No trades found for this item.</td></tr>';
     return;
   }
 
   searchResultsBody.innerHTML = results
     .map((trade) => {
-      // Format price as dollar value (e.g., $1,234.56)
-      const formattedPrice = new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 0,
-      }).format(trade.price);
-
+      const formattedPrice = formatCurrency(trade.price);
       return `
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${formattedPrice}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${trade.amount}</td>
-            </tr>
-        `;
+        <tr>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-200">${formattedPrice}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${trade.amount}</td>
+        </tr>
+      `;
     })
     .join("");
 }
@@ -235,11 +229,11 @@ function renderDailySummaryResults(summary) {
     .map(
       (row) => `
       <tr>
-          <td class="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${
+          <td class="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-200">${
             row["itemName"]
           }</td>
           <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
-            row["isodate"]
+            row["isodate"] ?? "-"
           }</td>
           <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
             row["buyCount"]
@@ -253,7 +247,7 @@ function renderDailySummaryResults(summary) {
           <td class="px-2 py-2 whitespace-nowrap text-sm text-red-600">${formatCurrency(
             row["avgSellPrice"]
           )}</td>
-          <td class="px-2 py-2 whitespace-nowrap text-sm font-bold text-indigo-700">${formatCurrency(
+          <td class="px-2 py-2 whitespace-nowrap text-sm font-bold text-indigo-400">${formatCurrency(
             row.profit
           )}</td>
       </tr>
@@ -301,7 +295,7 @@ function renderProfitChart(labels, profits) {
   // Find max profit for positive color gradient
   const maxProfit = Math.max(...profits.filter((p) => !isNaN(p) && p > 0));
   // Set the primary line color
-  const primaryColor = "#ea580c"; // orange-600
+  const primaryColor = "#16a34a"; // green-600
 
   const ctx = profitChartCanvas.getContext("2d");
 
@@ -823,7 +817,7 @@ async function searchItemData() {
   const lookupName = candidateName.toLowerCase();
 
   searchResultsBody.innerHTML =
-    '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-teal-500 animate-pulse">Searching for trades...</td></tr>';
+    '<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-blue-400 animate-pulse">Searching for trades...</td></tr>';
 
   try {
     // Try to resolve itemId from cached items first
@@ -864,8 +858,8 @@ async function searchItemData() {
     }
 
     if (!itemId) {
-      searchResultsBody.innerHTML =
-        `<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-red-500">Item "${candidateName}" not found in cache or server.</td></tr>`;
+      searchResultsBody.innerHTML = 
+        `<tr><td colspan="2" class="px-6 py-4 text-center text-sm text-red-400">Item "${candidateName}" not found in cache or server.</td></tr>`;
       return;
     }
 
@@ -898,7 +892,7 @@ async function generateDailySummary() {
   }
 
   summaryResultsBody.innerHTML =
-    '<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-purple-500 animate-pulse">Generating summary...</td></tr>';
+    '<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-blue-400 animate-pulse">Generating summary...</td></tr>';
 
   try {
     const response = datesArray
@@ -923,7 +917,7 @@ async function generateDailySummary() {
 async function fetchProfitByDate() {
     chartStatus.textContent = 'Fetching and processing profit data...';
     chartStatus.classList.remove('text-red-500', 'text-gray-500');
-    chartStatus.classList.add('text-orange-500');
+    chartStatus.classList.add('text-green-500');
     
     try {
         const response = await fetch(`${BASE_URL}/profit_by_date`);
@@ -1115,7 +1109,8 @@ async function findUndercuts() {
  */
 function renderUndercutResults(results) {
   if (!results || results.length === 0) {
-    undercutResultsBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500">No listings matched.</td></tr>`;
+    undercutResultsBody.innerHTML = 
+      `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-300">No listings matched.</td></tr>`;
     return;
   }
 
@@ -1125,8 +1120,8 @@ function renderUndercutResults(results) {
       const undercutTotalAmount = r.undercuts.reduce((sum, u) => sum + u.quantity, 0);
       const undercutSummary =
         undercutCount === 0
-          ? `<span class="text-sm text-gray-500">None</span>`
-          : `<span class="text-sm text-red-600 font-medium">${undercutTotalAmount} items in ${undercutCount} listings</span>`;
+          ? `<span class="text-sm text-gray-400">None</span>`
+          : `<span class="text-sm text-red-400 font-medium">${undercutTotalAmount} items in ${undercutCount} listings</span>`;
 
       const initialCount = 6;
       const hasMore = r.undercuts.length > initialCount;
@@ -1134,7 +1129,7 @@ function renderUndercutResults(results) {
       // Create details list with expand/collapse functionality
       const details = r.undercuts.length === 0 
         ? "" 
-        : `<div class="mt-2 text-xs text-gray-700 space-y-1">
+        : `<div class="mt-2 text-xs text-gray-300 space-y-1">
             ${r.undercuts
               .slice(0, initialCount)
               .map(u => `
@@ -1144,7 +1139,7 @@ function renderUndercutResults(results) {
               `).join("")}
             
             ${hasMore ? `
-              <div class="text-xs text-gray-400 mt-1 cursor-pointer hover:text-indigo-600" 
+              <div class="text-xs text-gray-400 mt-1 cursor-pointer hover:text-blue-400" 
                    onclick="toggleUndercutExpand(${index})" 
                    id="expand-toggle-${index}">
                 ▼ Show ${r.undercuts.length - initialCount} more
@@ -1163,9 +1158,9 @@ function renderUndercutResults(results) {
 
       return `
         <tr>
-          <td class="px-3 py-3 align-top font-medium text-gray-900">${r.name}</td>
-          <td class="px-3 py-3 align-top text-sm text-gray-800">${formatCurrency(r.myPrice)}</td>
-          <td class="px-3 py-3 align-top text-sm text-gray-600">${r.myQty}</td>
+          <td class="px-3 py-3 align-top font-medium text-gray-200">${r.name}</td>
+          <td class="px-3 py-3 align-top text-sm text-gray-300">${formatCurrency(r.myPrice)}</td>
+          <td class="px-3 py-3 align-top text-sm text-gray-300">${r.myQty}</td>
           <td class="px-3 py-3 align-top text-sm">${undercutSummary}${details}</td>
         </tr>
       `;
@@ -1185,11 +1180,11 @@ function toggleUndercutExpand(index) {
   if (content.classList.contains('hidden')) {
     content.classList.remove('hidden');
     toggle.innerHTML = '▲ Show less';
-    toggle.classList.add('text-indigo-600');
+    toggle.classList.add('text-indigo-400');
   } else {
     content.classList.add('hidden');
     toggle.innerHTML = `▼ Show ${content.children.length} more`;
-    toggle.classList.remove('text-indigo-600');
+    toggle.classList.remove('text-indigo-400');
   }
 }
 
