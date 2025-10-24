@@ -1,0 +1,150 @@
+/* Base styles */
+body {
+    @apply bg-gray-100 font-sans min-h-screen;
+    padding: 1.5rem;
+}
+
+@media (min-width: 768px) {
+    body {
+        padding: 2.5rem;
+    }
+}
+
+.container {
+    @apply max-w-4xl mx-auto;
+}
+
+/* Header */
+.page-title {
+    @apply text-4xl font-extrabold text-indigo-700;
+}
+
+/* Section styling */
+.section {
+    @apply bg-white p-6 rounded-xl shadow-lg mb-8;
+}
+
+.section-header {
+    @apply text-2xl font-semibold text-gray-800 mb-4 border-b pb-2;
+}
+
+.section-description {
+    @apply text-sm text-gray-500 mb-4;
+}
+
+/* Input controls */
+.input-primary {
+    @apply p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-opacity-50;
+}
+
+.input-date {
+    @apply flex-1 p-2 border border-gray-300 rounded-lg;
+}
+
+/* Buttons */
+.btn {
+    @apply px-4 py-2 rounded-lg font-medium transition duration-150 shadow-md transform hover:scale-105;
+}
+
+.btn-primary {
+    @apply bg-indigo-600 text-white hover:bg-indigo-700;
+}
+
+.btn-secondary {
+    @apply bg-purple-100 text-purple-700 border border-purple-300 hover:bg-purple-200;
+}
+
+/* Tables */
+.table-container {
+    @apply overflow-x-auto;
+}
+
+.table {
+    @apply min-w-full divide-y divide-gray-200;
+}
+
+.table-header {
+    @apply bg-gray-50;
+}
+
+.table-header th {
+    @apply px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider;
+}
+
+.table-body {
+    @apply bg-white divide-y divide-gray-200;
+}
+
+.table-cell {
+    @apply px-3 py-3 whitespace-nowrap text-sm;
+}
+
+/* Status messages */
+.status-message {
+    @apply text-sm font-mono p-2 rounded-lg text-center shadow-inner truncate;
+}
+
+.status-success {
+    @apply text-green-700 bg-green-50;
+}
+
+.status-neutral {
+    @apply text-gray-700 bg-gray-50;
+}
+
+.status-error {
+    @apply text-red-700 bg-red-100;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Undercut section specific styles */
+.undercut-summary {
+    @apply text-sm;
+}
+
+.undercut-none {
+    @apply text-gray-500;
+}
+
+.undercut-alert {
+    @apply text-red-600 font-medium;
+}
+
+.undercut-details {
+    @apply mt-2 text-xs text-gray-700 space-y-1;
+}
+
+.undercut-expand-toggle {
+    @apply text-xs text-gray-400 mt-1 cursor-pointer hover:text-indigo-600;
+}
+
+/* Price formatting */
+.price-positive {
+    @apply text-green-600;
+}
+
+.price-negative {
+    @apply text-red-600;
+}
+
+/* Loading states */
+.loading {
+    @apply animate-pulse;
+}

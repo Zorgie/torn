@@ -1115,7 +1115,12 @@ async function findUndercuts() {
  */
 function renderUndercutResults(results) {
   if (!results || results.length === 0) {
-    undercutResultsBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500">No listings matched.</td></tr>`;
+    undercutResultsBody.innerHTML = `
+      <tr>
+        <td colspan="4" class="table-cell text-center status-neutral">
+          No listings matched.
+        </td>
+      </tr>`;
     return;
   }
 
@@ -1123,18 +1128,16 @@ function renderUndercutResults(results) {
     .map((r, index) => {
       const undercutCount = r.undercuts.length;
       const undercutTotalAmount = r.undercuts.reduce((sum, u) => sum + u.quantity, 0);
-      const undercutSummary =
-        undercutCount === 0
-          ? `<span class="text-sm text-gray-500">None</span>`
-          : `<span class="text-sm text-red-600 font-medium">${undercutTotalAmount} items in ${undercutCount} listings</span>`;
+      const undercutSummary = undercutCount === 0
+        ? `<span class="undercut-none">None</span>`
+        : `<span class="undercut-alert">${undercutTotalAmount} items in ${undercutCount} listings</span>`;
 
       const initialCount = 6;
       const hasMore = r.undercuts.length > initialCount;
       
-      // Create details list with expand/collapse functionality
       const details = r.undercuts.length === 0 
         ? "" 
-        : `<div class="mt-2 text-xs text-gray-700 space-y-1">
+        : `<div class="undercut-details">
             ${r.undercuts
               .slice(0, initialCount)
               .map(u => `
@@ -1144,7 +1147,7 @@ function renderUndercutResults(results) {
               `).join("")}
             
             ${hasMore ? `
-              <div class="text-xs text-gray-400 mt-1 cursor-pointer hover:text-indigo-600" 
+              <div class="undercut-expand-toggle" 
                    onclick="toggleUndercutExpand(${index})" 
                    id="expand-toggle-${index}">
                 ▼ Show ${r.undercuts.length - initialCount} more
@@ -1163,10 +1166,10 @@ function renderUndercutResults(results) {
 
       return `
         <tr>
-          <td class="px-3 py-3 align-top font-medium text-gray-900">${r.name}</td>
-          <td class="px-3 py-3 align-top text-sm text-gray-800">${formatCurrency(r.myPrice)}</td>
-          <td class="px-3 py-3 align-top text-sm text-gray-600">${r.myQty}</td>
-          <td class="px-3 py-3 align-top text-sm">${undercutSummary}${details}</td>
+          <td class="table-cell font-medium text-gray-900">${r.name}</td>
+          <td class="table-cell text-gray-800">${formatCurrency(r.myPrice)}</td>
+          <td class="table-cell text-gray-600">${r.myQty}</td>
+          <td class="table-cell">${undercutSummary}${details}</td>
         </tr>
       `;
     })

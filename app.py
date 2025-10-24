@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS # Import the CORS extension
 from flask import abort, request
 import time 
@@ -214,6 +214,10 @@ def serve_js():
     except FileNotFoundError:
         # Use Flask's abort to return a clean 404 error
         return abort(404, description="Frontend file (code.js) not found in the current directory.")
+
+@app.route('/static/<path:path>')
+def send_static(path):
+    return send_from_directory('static', path)
 # --- Run Server ---
 
 if __name__ == '__main__':
