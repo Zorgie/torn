@@ -1,0 +1,1 @@
+SELECT isodate, sum(profit) as profit FROM DAILY_SUMMARY GROUP BY 1;

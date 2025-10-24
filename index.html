@@ -143,6 +143,34 @@
                 </table>
             </div>
         </section>
+
+        <!-- My Listings -> Undercuts -->
+        <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-sky-500">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold text-gray-800">My Listings — Undercuts</h2>
+                <div class="flex items-center gap-2">
+                    <button id="find-undercuts-btn" class="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 text-sm">Find Undercuts</button>
+                </div>
+            </div>
+
+            <p id="undercut-status" class="text-sm text-gray-500 mb-3">Click "Find Undercuts" to scan your current market listings and find cheaper public offers.</p>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">My Price</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">My Qty</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Undercuts</th>
+                        </tr>
+                    </thead>
+                    <tbody id="undercut-results-body" class="bg-white divide-y divide-gray-200">
+                        <tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500">No scan performed yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
   <script src="http://192.168.2.44:5000/code"></script>
 </body>

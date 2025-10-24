@@ -18,6 +18,11 @@ const searchItemDataBtn = document.getElementById("search-item-btn");
 const searchNameInput = document.getElementById("search-name-input");
 const searchResultsBody = document.getElementById("search-results-body");
 
+// NEW: Undercut UI selectors
+const findUndercutsBtn = document.getElementById("find-undercuts-btn");
+const undercutResultsBody = document.getElementById("undercut-results-body");
+const undercutStatus = document.getElementById("undercut-status");
+
 // Daily summary selectors
 const dailyDateInput = document.getElementById("daily-date-input");
 const generateSummaryBtn = document.getElementById("generate-summary-btn");
@@ -368,6 +373,8 @@ fetchRecentBtn.addEventListener("click", fetchMostRecentTimestamp);
 syncDataBtn.addEventListener("click", syncData);
 searchItemDataBtn.addEventListener("click", searchItemData);
 generateSummaryBtn.addEventListener("click", generateDailySummary);
+// NEW listener
+if (findUndercutsBtn) findUndercutsBtn.addEventListener("click", findUndercuts);
 
 // CHART EVENT LISTENER
 fetchProfitBtn.addEventListener("click", fetchProfitByDate);
@@ -836,4 +843,188 @@ async function fetchProfitByDate() {
         chartStatus.classList.add('text-red-500');
         renderProfitChart([], []); // Clear chart on error
     }
+}
+
+// --- New functions: fetchMyListings, findUndercuts, renderUndercutResults ---
+
+/**
+ * Fetch the current user's itemmarket listings from Torn.
+ * Uses user id 3960421 (same as other user-specific calls in this project).
+ * Returns an array of listing objects with at least: itemId, price, quantity, id.
+ */
+async function fetchMyListings() {
+  if (!apiKey()) throw new Error("API key required");
+  const userId = 3960421; // keep consistent with other calls in this project
+  const url = `https://api.torn.com/v2/user/itemmarket?key=${apiKey()}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`User itemmarket fetch failed: ${res.status}`);
+  const json = await res.json();
+
+  // Response shapes vary; try common shapes defensively:
+  // - json.itemmarket?.listings (array)
+  // - json.itemmarket?.items (object keyed by item id)
+  // - json.itemmarket (maybe already array)
+  // We'll normalize to an array of { itemId, price, quantity, listingId }.
+  const listings = [];
+
+  const im = json.itemmarket;
+  if (im) {
+    for (const l of im) {
+      listings.push({
+        itemId: l.item.id,
+        price: l.price || 0,
+        quantity: l.amount,
+        id: l.id,
+      });
+    }
+    return listings;
+  }
+
+  // Nothing found
+  return listings;
+}
+
+/**
+ * For each of the user's listings, fetch the public market and collect listings priced below the user's price.
+ */
+async function findUndercuts() {
+  if (!apiKey()) {
+    undercutStatus.innerText = "Set an API key first.";
+    undercutStatus.classList.add("text-red-500");
+    return;
+  }
+
+  // Ensure items cache exists (for names)
+  if (!items || Object.keys(items).length === 0) {
+    undercutStatus.innerText = "Loading item catalog (will be used to resolve names)...";
+    try {
+      await fetchItems(true);
+    } catch (e) {
+      console.warn("fetchItems failed:", e);
+    }
+  }
+
+  undercutStatus.innerText = "Fetching your listings...";
+  undercutStatus.classList.remove("text-red-500");
+  undercutStatus.classList.add("text-gray-500");
+  undercutResultsBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500 animate-pulse">Scanning your listings...</td></tr>`;
+
+  try {
+    const myListings = await fetchMyListings();
+
+    if (!myListings || myListings.length === 0) {
+      undercutStatus.innerText = "No marketplace listings found for your account.";
+      undercutResultsBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500">No listings found.</td></tr>`;
+      return;
+    }
+
+    // For each listing, fetch public market and find undercuts.
+    const results = [];
+    for (let i = 0; i < myListings.length; i++) {
+      const l = myListings[i];
+      const itemId = l.itemId || l.itemid || l.item;
+      const myPrice = Number(l.price || 0);
+      const myQty = Number(l.quantity || 0);
+
+      if (!itemId) continue;
+
+      // update short status
+      undercutStatus.innerText = `Scanning ${i + 1}/${myListings.length} — item ${itemId} ...`;
+
+      // fetch public market for this item
+      const marketUrl = `https://api.torn.com/v2/market/${itemId}/itemmarket?limit=50&key=${apiKey()}`;
+      let marketJson = null;
+      try {
+        const resp = await fetch(marketUrl);
+        if (!resp.ok) throw new Error(resp.status);
+        marketJson = await resp.json();
+      } catch (e) {
+        console.warn(`Failed to fetch market for item ${itemId}:`, e);
+        marketJson = null;
+      }
+
+      let publicListings = [];
+      if (marketJson) {
+        // The v2 market endpoint generally returns itemmarket.listings as array
+        publicListings = marketJson?.itemmarket?.listings || marketJson?.listings || [];
+        // normalize structure
+        publicListings = publicListings.map((p) => ({
+          price: Number(p.price || p.cost_each || p.cost || 0),
+          quantity: Number(p.quantity || p.amount || p.qty || (p.items && p.items[0] && p.items[0].qty) || 0),
+          seller_id: p.seller_id || p.seller || p.user || null,
+        }));
+      }
+
+      // filter undercuts
+      const undercuts = publicListings.filter((p) => p.price < myPrice).sort((a,b) => a.price - b.price);
+
+      results.push({
+        itemId,
+        name: (items && items[itemId] && items[itemId].name) || `ID ${itemId}`,
+        myPrice,
+        myQty,
+        undercuts,
+      });
+
+      // small delay to be network-friendly
+      await sleep(150);
+    }
+
+    renderUndercutResults(results);
+    undercutStatus.innerText = `Scan complete — ${results.length} listings scanned.`;
+    undercutStatus.classList.remove("text-gray-500");
+    undercutStatus.classList.add("text-green-700");
+  } catch (err) {
+    console.error("findUndercuts error:", err);
+    undercutStatus.innerText = `Undercut scan failed: ${err.message}`;
+    undercutStatus.classList.remove("text-gray-500");
+    undercutStatus.classList.add("text-red-500");
+    undercutResultsBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-red-500">Scan failed. See console for details.</td></tr>`;
+  }
+}
+
+/**
+ * Render results array:
+ * [{ itemId, name, myPrice, myQty, undercuts: [{price, quantity, seller_id}] }]
+ */
+function renderUndercutResults(results) {
+  if (!results || results.length === 0) {
+    undercutResultsBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500">No listings matched.</td></tr>`;
+    return;
+  }
+
+  const rows = results
+    .map((r) => {
+      const undercutCount = r.undercuts.length;
+      const undercutTotalAmount = r.undercuts.reduce((sum, u) => sum + u.quantity, 0);
+      const undercutSummary =
+        undercutCount === 0
+          ? `<span class="text-sm text-gray-500">None</span>`
+          : `<span class="text-sm text-red-600 font-medium">${undercutTotalAmount} items in ${undercutCount} listings</span>`;
+
+      // Create details list (limited to first 6 to keep compact)
+      const details =
+        r.undercuts.length === 0
+          ? ""
+          : `<div class="mt-2 text-xs text-gray-700 space-y-1">${r.undercuts
+              .slice(0, 10)
+              .map(
+                (u) =>
+                  `<div class="flex justify-between"><span>${formatCurrency(u.price)} — x${u.quantity}</span><span class="ml-4 text-gray-400">seller:${u.seller_id || "?"}</span></div>`
+              )
+              .join("")}${r.undercuts.length > 6 ? `<div class="text-xs text-gray-400 mt-1">...and ${r.undercuts.length - 6} more</div>` : ""}</div>`;
+
+      return `
+        <tr>
+          <td class="px-3 py-3 align-top font-medium text-gray-900">${r.name}</td>
+          <td class="px-3 py-3 align-top text-sm text-gray-800">${formatCurrency(r.myPrice)}</td>
+          <td class="px-3 py-3 align-top text-sm text-gray-600">${r.myQty}</td>
+          <td class="px-3 py-3 align-top text-sm">${undercutSummary}${details}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  undercutResultsBody.innerHTML = rows;
 }

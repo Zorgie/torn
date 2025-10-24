@@ -67,10 +67,6 @@ def add_data():
         return jsonify({"error": "Missing JSON in request"}), 400
     
     item_data = request.get_json()
-
-    key = item_data.get('key')
-    if key != "ZtBwt22hMlryQVKM":
-        return jsonify({"error": "invalid key"}), 500
     trades = item_data.get('trades')
     
     conn = get_db_connection()
