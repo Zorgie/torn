@@ -117,46 +117,44 @@ def get_item_data(itemName):
         # Return a 500 error if there's a database issue
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
-@app.route('/daily_summary', methods=['POST'])
+@app.route('/daily_summary', methods=['GET', 'POST'])
 def get_daily_summary():
-    if not request.is_json:
-        return jsonify({"error": "Missing JSON in request"}), 400
-    
-    data = request.get_json()
-    dates = data.get('dates', [])
-    quoted_dates = [f"'{date}'" for date in dates];
-    dates_param = ", ".join(quoted_dates)
-
-    if not dates or not isinstance(dates, list):
-        return jsonify({"error": "Invalid or missing 'dates' array in request body."}), 400
-
-    # The front-end function sends a list of dates (YYYY-MM-DD) here.
-    # You can now implement your custom SQL query below using the 'dates' array.
-    
-    # --- START USER SQL QUERY LOGIC ---
-    query = '''
-            SELECT *, sellCount * (avgSellPrice - avgBuyPrice) as profit FROM (
-            SELECT
-                itemName,
-                strftime('%Y-%m-%d', DATETIME(ROUND(timestamp), 'unixepoch')) AS isodate, 
-                SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) as buyCount,
-                SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) AS avgBuyPrice,
-                SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) as sellCount,
-                ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) AS avgSellPrice
-            FROM MARKET_TRADES NATURAL INNER JOIN ITEM_DATA
-            WHERE isodate IN({date_list})
-            GROUP BY 1, 2)
-            ORDER BY profit DESC;
-    '''.format(date_list=dates_param)
-
     conn = get_db_connection()
-    results = conn.execute(query).fetchall()
-    conn.close()
+    try:
+        if request.method == 'POST':
+            dates = request.json.get('dates', [])
+            if not dates:
+                return jsonify({'error': 'No dates provided'}), 400
+            
+            placeholders = ','.join('?' * len(dates))
+            query = f'''
+                SELECT itemName, isodate, buyCount, avgBuyPrice, sellCount, avgSellPrice, profit
+                FROM DAILY_SUMMARY 
+                WHERE isodate IN ({placeholders})
+                ORDER BY isodate DESC, profit DESC
+            '''
+            results = conn.execute(query, dates).fetchall()
+        else:
+            start_date = request.args.get('start_date')
+            end_date = request.args.get('end_date')
+            
+            if not start_date or not end_date:
+                return jsonify({'error': 'start_date and end_date parameters are required'}), 400
+            
+            query = '''
+                SELECT itemName, isodate, buyCount, avgBuyPrice, sellCount, avgSellPrice, profit
+                FROM DAILY_SUMMARY 
+                WHERE isodate BETWEEN ? AND ?
+                ORDER BY isodate DESC, profit DESC
+            '''
+            results = conn.execute(query, (start_date, end_date)).fetchall()
     
-    # Convert rows to a list of dictionaries for JSON response
-    # items = [dict(row) for row in items] # Already handled by row_factory above, but good to know
-    
-    return jsonify([dict(ix) for ix in results])
+        return jsonify([dict(ix) for ix in results])
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
 
 @app.route('/profit_by_date', methods=['GET'])
 def get_profit_by_date():

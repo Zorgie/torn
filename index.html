@@ -54,8 +54,16 @@
 
         <!-- Daily Summary Section -->
         <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-purple-500">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Daily Trade Summary (POST /daily_summary)</h2>
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Daily Trade Summary</h2>
             <p class="text-sm text-gray-500 mb-4">Enter one or more dates separated by commas (e.g., YYYY-MM-DD,YYYY-MM-DD).</p>
+            <!-- Daily Trade Summary controls -->
+            <div class="flex flex-wrap items-center gap-4 mb-4">
+                <!-- New checkbox for profit filter -->
+                <label class="flex items-center gap-2 text-sm text-gray-600">
+                    <input type="checkbox" id="profit-only-checkbox" class="rounded text-teal-600" checked="true">
+                    Show only positive profit
+                </label>
+            </div>
             <div class="flex flex-col md:flex-row gap-4 mb-6">
                 <input type="text" id="daily-date-input" placeholder="e.g., 2025-10-18, 2025-10-19" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500">
                 <button id="generate-summary-btn" class="px-6 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition duration-150 shadow-md transform hover:scale-105">
@@ -121,7 +129,7 @@
             <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Item Trade Search</h2>
             <div class="flex flex-col md:flex-row gap-4 mb-6">
                 <!-- attach the datalist by using the `list` attribute -->
-                <input type="text" id="search-name-input" list="data-list-container" placeholder="Enter item name (e.g., GOOG)" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500">
+                <input type="text" id="search-name-input" list="data-list-container" placeholder="Enter item name (e.g., Xanax)" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500">
                 <button id="search-item-btn" class="px-6 py-3 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 transition duration-150 shadow-md transform hover:scale-105">
                     Search Trades
                 </button>
@@ -169,6 +177,36 @@
                         <tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500">No scan performed yet.</td></tr>
                     </tbody>
                 </table>
+            </div>
+        </section>
+
+        <!-- Price History Chart -->
+        <section class="bg-white p-6 rounded-xl shadow-lg mb-8 border-l-4 border-purple-500">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold text-gray-800">Item Price History</h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <input type="text" id="price-history-item-input" list="data-list-container" 
+                       placeholder="Enter item name" 
+                       class="p-2 border border-gray-300 rounded-lg">
+                       
+                <div class="flex gap-2">
+                    <input type="date" id="price-history-start-date" 
+                           class="flex-1 p-2 border border-gray-300 rounded-lg">
+                    <input type="date" id="price-history-end-date" 
+                           class="flex-1 p-2 border border-gray-300 rounded-lg">
+                    <button id="fetch-price-history-btn" 
+                            class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                        Fetch
+                    </button>
+                </div>
+            </div>
+
+            <div id="price-history-status" class="text-sm text-gray-500 mb-4"></div>
+            
+            <div class="relative h-[400px]">
+                <canvas id="price-history-chart"></canvas>
             </div>
         </section>
     </div>

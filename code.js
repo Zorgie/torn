@@ -27,6 +27,7 @@ const undercutStatus = document.getElementById("undercut-status");
 const dailyDateInput = document.getElementById("daily-date-input");
 const generateSummaryBtn = document.getElementById("generate-summary-btn");
 const summaryResultsBody = document.getElementById("summary-results-body");
+const profitOnlyCheckbox = document.getElementById("profit-only-checkbox");
 const dateTodayBtn = document.getElementById("date-today-btn");
 const date3DaysBtn = document.getElementById("date-3days-btn");
 const date7DaysBtn = document.getElementById("date-7days-btn");
@@ -38,6 +39,15 @@ const fetchProfitBtn = document.getElementById("fetch-profit-btn");
 const chartStatus = document.getElementById("chart-status");
 const profitChartCanvas = document.getElementById("profit-chart");
 let profitChartInstance = null; // To hold the Chart.js instance
+
+// Price History Chart selectors
+const priceHistoryItemInput = document.getElementById("price-history-item-input");
+const priceHistoryStartDate = document.getElementById("price-history-start-date");
+const priceHistoryEndDate = document.getElementById("price-history-end-date");
+const fetchPriceHistoryBtn = document.getElementById("fetch-price-history-btn");
+const priceHistoryStatus = document.getElementById("price-history-status");
+const priceHistoryChart = document.getElementById("price-history-chart");
+let priceHistoryChartInstance = null;
 
 // Add global items store and storage key
 let items = {}; // will hold the items JSON (id -> {name,...})
@@ -200,11 +210,14 @@ function renderSearchResults(results) {
 }
 
 function renderDailySummaryResults(summary) {
+  const displayProfitOnly = profitOnlyCheckbox.checked;
   if (summary.length === 0) {
     summaryResultsBody.innerHTML =
       '<tr><td colspan="7" class="px-2 py-4 text-center text-sm text-gray-500">No summary data found for the selected dates.</td></tr>';
     return;
   }
+
+  summary = summary.filter(row => !displayProfitOnly || row.profit > 0);
 
   // Calculate Totals for relevant columns
   const totals = summary.reduce(
@@ -373,8 +386,118 @@ fetchRecentBtn.addEventListener("click", fetchMostRecentTimestamp);
 syncDataBtn.addEventListener("click", syncData);
 searchItemDataBtn.addEventListener("click", searchItemData);
 generateSummaryBtn.addEventListener("click", generateDailySummary);
-// NEW listener
-if (findUndercutsBtn) findUndercutsBtn.addEventListener("click", findUndercuts);
+findUndercutsBtn.addEventListener("click", findUndercuts);
+fetchProfitBtn.addEventListener("click", fetchProfitByDate);
+// NEW: Price history listener
+if (fetchPriceHistoryBtn) {
+    fetchPriceHistoryBtn.addEventListener("click", fetchPriceHistory);
+    // Set default date range (last 30 days)
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+    priceHistoryStartDate.value = formatDate(start);
+    priceHistoryEndDate.value = formatDate(end);
+}
+
+async function fetchPriceHistory() {
+    const itemName = priceHistoryItemInput.value.trim();
+    if (!itemName) {
+        priceHistoryStatus.innerText = "Please enter an item name";
+        return;
+    }
+
+    const startDate = priceHistoryStartDate.value;
+    const endDate = priceHistoryEndDate.value;
+    if (!startDate || !endDate) {
+        priceHistoryStatus.innerText = "Please select both start and end dates";
+        return;
+    }
+
+    priceHistoryStatus.innerText = "Fetching price history...";
+
+    try {
+        const response = await fetch(
+            `${BASE_URL}/daily_summary?start_date=${startDate}&end_date=${endDate}`
+        );
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+
+        // Filter for the specific item and prepare chart data
+        const itemData = data.filter(row => row.itemName.toLowerCase() === itemName.toLowerCase());
+        
+        if (itemData.length === 0) {
+            priceHistoryStatus.innerText = "No data found for this item in the selected date range";
+            return;
+        }
+
+        // Sort by date
+        itemData.sort((a, b) => new Date(a.isodate) - new Date(b.isodate));
+
+        const chartData = {
+            labels: itemData.map(row => row.isodate),
+            datasets: [
+                {
+                    label: 'Buy Price',
+                    data: itemData.map(row => row.avgBuyPrice),
+                    borderColor: 'rgb(59, 130, 246)', // blue-500
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.1
+                },
+                {
+                    label: 'Sell Price',
+                    data: itemData.map(row => row.avgSellPrice),
+                    borderColor: 'rgb(34, 197, 94)', // green-500
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    tension: 0.1
+                }
+            ]
+        };
+
+        // Destroy existing chart if it exists
+        if (priceHistoryChartInstance) {
+            priceHistoryChartInstance.destroy();
+        }
+
+        // Create new chart
+        priceHistoryChartInstance = new Chart(priceHistoryChart, {
+            type: 'line',
+            data: chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        ticks: {
+                            callback: value => formatCurrency(value)
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: context => {
+                                const label = context.dataset.label || '';
+                                const value = formatCurrency(context.parsed.y);
+                                return `${label}: ${value}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        priceHistoryStatus.innerText = `Showing price history for ${itemName}`;
+
+    } catch (error) {
+        console.error('Error:', error);
+        priceHistoryStatus.innerText = `Error fetching data: ${error.message}`;
+    }
+}
 
 // CHART EVENT LISTENER
 fetchProfitBtn.addEventListener("click", fetchProfitByDate);
@@ -875,6 +998,7 @@ async function fetchMyListings() {
         price: l.price || 0,
         quantity: l.amount,
         id: l.id,
+        itemName: l.item.name,
       });
     }
     return listings;
@@ -925,11 +1049,12 @@ async function findUndercuts() {
       const itemId = l.itemId || l.itemid || l.item;
       const myPrice = Number(l.price || 0);
       const myQty = Number(l.quantity || 0);
+      const myItemName = l.itemName;
 
       if (!itemId) continue;
 
       // update short status
-      undercutStatus.innerText = `Scanning ${i + 1}/${myListings.length} — item ${itemId} ...`;
+      undercutStatus.innerText = `Scanning ${i + 1}/${myListings.length} — ${myItemName} ...`;
 
       // fetch public market for this item
       const marketUrl = `https://api.torn.com/v2/market/${itemId}/itemmarket?limit=50&key=${apiKey()}`;
@@ -1003,7 +1128,7 @@ function renderUndercutResults(results) {
           ? `<span class="text-sm text-gray-500">None</span>`
           : `<span class="text-sm text-red-600 font-medium">${undercutTotalAmount} items in ${undercutCount} listings</span>`;
 
-      // Create details list (limited to first 6 to keep compact)
+      // Create details list (limited to first 10 to keep compact)
       const details =
         r.undercuts.length === 0
           ? ""
@@ -1011,9 +1136,9 @@ function renderUndercutResults(results) {
               .slice(0, 10)
               .map(
                 (u) =>
-                  `<div class="flex justify-between"><span>${formatCurrency(u.price)} — x${u.quantity}</span><span class="ml-4 text-gray-400">seller:${u.seller_id || "?"}</span></div>`
+                  `<div class="flex justify-between"><span>${formatCurrency(u.price)} — x${u.quantity}</span></div>`
               )
-              .join("")}${r.undercuts.length > 6 ? `<div class="text-xs text-gray-400 mt-1">...and ${r.undercuts.length - 6} more</div>` : ""}</div>`;
+              .join("")}${r.undercuts.length > 10 ? `<div class="text-xs text-gray-400 mt-1">...and ${r.undercuts.length - 10} more</div>` : ""}</div>`;
 
       return `
         <tr>
