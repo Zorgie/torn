@@ -510,7 +510,7 @@ async function fetchPartial(
   }
   const fetchUrl = `${baseUrl}&from=${fromTimestamp}&to=${toTimestamp}`;
   updateStatus("fetching: " + fetchCount);
-  var res = await fetch(fetchUrl);
+  var res = await fetchWithRateLimit(fetchUrl);
   var jsonRes = await res.json();
   let minToTimestamp = toTimestamp;
   for (const [key, value] of Object.entries(jsonRes.log)) {
@@ -523,7 +523,6 @@ async function fetchPartial(
     }
   }
   if (Object.entries(jsonRes.log).length === 100) {
-    await sleep(600);
     return fetchPartial(
       buyRes,
       sellRes,
@@ -909,8 +908,7 @@ async function findUndercuts() {
       const marketUrl = `https://api.torn.com/v2/market/${itemId}/itemmarket?limit=50&key=${apiKey()}`;
       let marketJson = null;
       try {
-        await sleep(600); // To manage the rate limit of 100 requests per minute
-        const resp = await fetch(marketUrl);
+        const resp = await fetchWithRateLimit(marketUrl);
         if (!resp.ok) throw new Error(resp.status);
         marketJson = await resp.json();
       } catch (e) {
@@ -1196,3 +1194,44 @@ if (fetchItemProfitBtn) {
 window.addEventListener("load", () => {
   try { setDefaultProfitDateRange(7); } catch (e) {}
 });
+
+// --- Rate-limited fetch wrapper ---
+// Maintains a sliding window of request timestamps (ms). If requests in the last 60s exceed thresholds,
+// the wrapper delays the fetch: >90 -> 10s delay, >75 -> 1s delay.
+const _fetchTimestamps = []; // oldest first
+
+function _cleanupOldTimestamps() {
+  const cutoff = Date.now() - 60_000;
+  while (_fetchTimestamps.length && _fetchTimestamps[0] < cutoff) {
+    _fetchTimestamps.shift();
+  }
+}
+
+/**
+ * Wrapper around global fetch that applies a short delay when request-rate is high.
+ * Usage: replace `fetch(...)` with `fetchWithRateLimit(...)` where needed.
+ * @param {RequestInfo} input
+ * @param {RequestInit} [init]
+ * @returns {Promise<Response>}
+ */
+async function fetchWithRateLimit(input, init) {
+  _cleanupOldTimestamps();
+  const recentCount = _fetchTimestamps.length;
+
+  let delayMs = 0;
+  if (recentCount > 90) {
+    delayMs = 10_000;
+  } else if (recentCount > 75) {
+    delayMs = 1_000;
+  }
+
+  if (delayMs > 0) {
+    await new Promise((res) => setTimeout(res, delayMs));
+    // after waiting, clean up again to get an updated window
+    _cleanupOldTimestamps();
+  }
+
+  // record this request timestamp and perform fetch
+  _fetchTimestamps.push(Date.now());
+  return fetch(input, init);
+}
