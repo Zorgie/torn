@@ -1,6 +1,8 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS # Import the CORS extension
 from flask import abort, request
+from time import strftime, localtime
+import datetime
 import time 
 import os # Import os for path handling
 import sqlite3
@@ -214,6 +216,77 @@ def serve_js():
     except FileNotFoundError:
         # Use Flask's abort to return a clean 404 error
         return abort(404, description="Frontend file (code.js) not found in the current directory.")
+@app.route('/calculate_profit', methods=['GET'])
+def calculate_profit():
+    conn = get_db_connection()
+    
+    # Get optional filters from query parameters
+    item_id = request.args.get('itemId')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    # Build the query based on filters
+    query = 'SELECT * FROM MARKET_TRADES'
+    filters = []
+    if item_id and item_id != 'null':
+        filters.append('itemId = ?')
+    if start_date and end_date:
+        start_timestamp = time.mktime(datetime.datetime.strptime(start_date, "%d/%m/%Y").timetuple())
+        end_timestamp = time.mktime(datetime.datetime.strptime(end_date, "%d/%m/%Y").timetuple()) + 86399  # Include the entire end day
+        filters.append('timestamp BETWEEN ? AND ?')
+    
+    if filters:
+        query += ' WHERE ' + ' AND '.join(filters)
+    query += ' ORDER BY timestamp ASC'
+    
+    # Execute the query with parameters
+    params = []
+    if item_id and item_id != 'null':
+        params.append(item_id)
+    if start_date and end_date:
+        params.extend([start_timestamp, end_timestamp])
+    
+    trades = conn.execute(query, params).fetchall()
+    conn.close()
+
+    stock = {}
+    total_buy_price = {}
+    profit_dict = {}
+
+    for trade in trades:
+        item_id = trade['itemId']
+        trade_type = trade['tradeType']
+        quantity = trade['quantity']
+        price = trade['price']
+
+        if item_id not in stock:
+            stock[item_id] = 0
+            total_buy_price[item_id] = 0.0
+
+        if trade_type == 'BUY':
+            stock[item_id] += quantity
+            total_buy_price[item_id] += price * quantity
+        elif trade_type == 'SELL':
+            avg_buy_price = (total_buy_price[item_id] / stock[item_id]) if stock[item_id] > 0 else 0
+            stock[item_id] -= quantity
+            stock[item_id] = max(stock[item_id], 0)  # Prevent negative stock
+            total_buy_price[item_id] -= avg_buy_price * quantity
+            total_buy_price[item_id] = max(total_buy_price[item_id], 0)
+            profit = quantity * (price * 0.95 - avg_buy_price)
+
+            date = strftime('%Y-%m-%d', localtime(trade['timestamp']))
+            if date not in profit_dict:
+                profit_dict[date] = 0.0
+            profit_dict[date] += profit
+
+    profit_results = []
+    for date, profit in profit_dict.items():
+        profit_results.append({
+            'date': date,
+            'profit': profit
+        })
+
+    return jsonify(profit_results), 200    
 # --- Run Server ---
 
 if __name__ == '__main__':

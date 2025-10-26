@@ -64,6 +64,58 @@
             </div>
         </section>
 
+        <!-- My Listings -> Undercuts -->
+        <section class="bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border-l-4 border-green-500">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold text-gray-100">My Listings — Undercuts</h2>
+                <div class="flex items-center gap-2">
+                    <button id="find-undercuts-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+                        Undercut scan
+                    </button>
+                </div>
+            </div>
+
+            <p id="undercut-status" class="text-sm text-gray-400 mb-3">Click "Find Undercuts" to scan your current market listings and find cheaper public offers.</p>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead class="bg-gray-700">
+                        <tr>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">My Price</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">My Qty</th>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Undercuts</th>
+                        </tr>
+                    </thead>
+                    <tbody id="undercut-results-body" class="bg-gray-800 divide-y divide-gray-700">
+                        <tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500">No scan performed yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Profit by Item Section -->
+        <section class="bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border-l-4 border-green-400">
+            <h2 class="text-2xl font-semibold text-green-300 mb-4 border-b border-gray-700 pb-2">Profit</h2>
+            <p class="text-sm text-gray-400 mb-4">Select an item (optional) and a date range (defaults to last 7 days).</p>
+
+            <div class="flex flex-col md:flex-row gap-4 mb-4">
+                <input type="text" id="profit-item-input" list="data-list-container" placeholder="Enter item name" class="bg-gray-700 text-gray-100 flex-grow p-3 border border-gray-600 rounded-lg focus:ring-green-500 focus:border-green-500">
+                <input type="date" id="profit-start-date" class="bg-gray-700 text-gray-100 p-3 border border-gray-600 rounded-lg">
+                <input type="date" id="profit-end-date" class="bg-gray-700 text-gray-100 p-3 border border-gray-600 rounded-lg">
+                <button id="fetch-item-profit-btn" class="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition duration-150 shadow-md">
+                    Fetch Profit
+                </button>
+            </div>
+
+            <!-- Replaced table with chart canvas -->
+            <div class="relative h-64">
+                <canvas id="item-profit-chart"></canvas>
+            </div>
+            <p id="item-profit-status" class="mt-3 text-sm text-center text-gray-300">Select item and dates to fetch profit.</p>
+            <p id="item-profit-total" class="mt-2 text-sm text-center font-semibold text-green-300"></p>
+        </section>
+
         <!-- Daily Summary Section -->
         <section class="bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border-l-4 border-green-700">
             <h2 class="text-2xl font-semibold text-green-500 mb-4 border-b border-gray-700 pb-2">Daily Trade Summary</h2>
@@ -114,28 +166,6 @@
             </div>
         </section>
 
-        <!-- Profit Chart Section -->
-        <section class="bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border-l-4 border-green-500">
-            <h2 class="text-2xl font-semibold text-green-400 mb-4 border-b border-gray-700 pb-2">Profit Trend Chart</h2>
-            <p class="text-sm text-gray-300 mb-4">View daily profit aggregated across all items for a custom date range.</p>
-            <div class="flex flex-col gap-4 mb-6">
-                <!-- Date Range Input -->
-                <div class="flex flex-col md:flex-row gap-4">
-                    <input type="date" id="start-date-input" class="bg-gray-700 text-gray-100 flex-grow p-3 border border-gray-600 rounded-lg focus:ring-green-500 focus:border-green-500" title="Start Date">
-                    <input type="date" id="end-date-input" class="bg-gray-700 text-gray-100 flex-grow p-3 border border-gray-600 rounded-lg focus:ring-green-500 focus:border-green-500" title="End Date">
-                    <button id="fetch-profit-btn" class="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition duration-150 shadow-md">
-                        Filter & Draw Chart
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Chart Container -->
-            <div class="relative h-96">
-                <canvas id="profit-chart"></canvas>
-            </div>
-            <p id="chart-status" class="mt-4 text-sm text-center text-gray-300">Set a date range and click 'Filter & Draw Chart'.</p>
-        </section>
-
         <!-- Item Search Section -->
         <section class="bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border-l-4 border-green-500">
             <h2 class="text-2xl font-semibold text-green-400 mb-4 border-b border-gray-700 pb-2">Item Trade Search</h2>
@@ -159,36 +189,6 @@
                     </thead>
                     <tbody id="search-results-body" class="bg-gray-800 divide-y divide-gray-700">
                         <tr><td colspan="2" class="px-6 py-4 text-center text-sm text-gray-500">Enter an item name and search.</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- My Listings -> Undercuts -->
-        <section class="bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border-l-4 border-green-500">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-semibold text-gray-100">My Listings — Undercuts</h2>
-                <div class="flex items-center gap-2">
-                    <button id="find-undercuts-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
-                        Undercut scan
-                    </button>
-                </div>
-            </div>
-
-            <p id="undercut-status" class="text-sm text-gray-400 mb-3">Click "Find Undercuts" to scan your current market listings and find cheaper public offers.</p>
-
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead class="bg-gray-700">
-                        <tr>
-                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">My Price</th>
-                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">My Qty</th>
-                            <th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">Undercuts</th>
-                        </tr>
-                    </thead>
-                    <tbody id="undercut-results-body" class="bg-gray-800 divide-y divide-gray-700">
-                        <tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500">No scan performed yet.</td></tr>
                     </tbody>
                 </table>
             </div>

@@ -18,7 +18,7 @@ const searchItemDataBtn = document.getElementById("search-item-btn");
 const searchNameInput = document.getElementById("search-name-input");
 const searchResultsBody = document.getElementById("search-results-body");
 
-// NEW: Undercut UI selectors
+// Undercut UI selectors
 const findUndercutsBtn = document.getElementById("find-undercuts-btn");
 const undercutResultsBody = document.getElementById("undercut-results-body");
 const undercutStatus = document.getElementById("undercut-status");
@@ -32,14 +32,6 @@ const dateTodayBtn = document.getElementById("date-today-btn");
 const date3DaysBtn = document.getElementById("date-3days-btn");
 const date7DaysBtn = document.getElementById("date-7days-btn");
 
-// CHART SELECTORS
-const startDateInput = document.getElementById("start-date-input");
-const endDateInput = document.getElementById("end-date-input");
-const fetchProfitBtn = document.getElementById("fetch-profit-btn");
-const chartStatus = document.getElementById("chart-status");
-const profitChartCanvas = document.getElementById("profit-chart");
-let profitChartInstance = null; // To hold the Chart.js instance
-
 // Price History Chart selectors
 const priceHistoryItemInput = document.getElementById("price-history-item-input");
 const priceHistoryStartDate = document.getElementById("price-history-start-date");
@@ -48,6 +40,16 @@ const fetchPriceHistoryBtn = document.getElementById("fetch-price-history-btn");
 const priceHistoryStatus = document.getElementById("price-history-status");
 const priceHistoryChart = document.getElementById("price-history-chart");
 let priceHistoryChartInstance = null;
+
+// Item profit section
+const profitItemInput = document.getElementById("profit-item-input");
+const profitStartDate = document.getElementById("profit-start-date");
+const profitEndDate = document.getElementById("profit-end-date");
+const fetchItemProfitBtn = document.getElementById("fetch-item-profit-btn");
+const itemProfitChartCanvas = document.getElementById("item-profit-chart");
+const itemProfitStatus = document.getElementById("item-profit-status");
+const itemProfitTotal = document.getElementById("item-profit-total");
+let itemProfitChartInstance = null;
 
 // Add global items store and storage key
 let items = {}; // will hold the items JSON (id -> {name,...})
@@ -112,16 +114,15 @@ function getDates(numberOfDays) {
 }
 
 /**
- * Sets a default date range for the chart inputs (today to N days ago).
+ * Sets a default 7-day range for the new section
  * @param {number} days - Number of days to look back.
  */
-function setDefaultDateRange(days = 30) {
+function setDefaultProfitDateRange(days = 7) {
   const today = new Date();
-  const pastDate = new Date();
-  pastDate.setDate(today.getDate() - days + 1); // +1 to include the current day
-
-  endDateInput.value = formatDate(today);
-  startDateInput.value = formatDate(pastDate);
+  const past = new Date();
+  past.setDate(today.getDate() - (days - 1));
+  profitEndDate.value = formatDate(today);
+  profitStartDate.value = formatDate(past);
 }
 
 /**
@@ -278,101 +279,6 @@ function renderDailySummaryResults(summary) {
   summaryResultsBody.innerHTML = detailRows + totalRow;
 }
 
-function renderProfitChart(labels, profits) {
-  if (profitChartInstance) {
-    profitChartInstance.destroy();
-  }
-
-  if (labels.length === 0) {
-    // The status message is set by the calling function (fetchProfitByDate)
-    return;
-  }
-
-  chartStatus.textContent = `Displaying profit trend for ${labels.length} days.`;
-  chartStatus.classList.remove("text-red-500");
-  chartStatus.classList.add("text-gray-500");
-
-  // Find max profit for positive color gradient
-  const maxProfit = Math.max(...profits.filter((p) => !isNaN(p) && p > 0));
-  // Set the primary line color
-  const primaryColor = "#16a34a"; // green-600
-
-  const ctx = profitChartCanvas.getContext("2d");
-
-  // Create the Chart.js instance
-  profitChartInstance = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: "Daily Profit",
-          data: profits,
-          borderColor: primaryColor,
-          backgroundColor: "rgba(249, 115, 22, 0.1)", // light orange fill
-          borderWidth: 2,
-          pointBackgroundColor: primaryColor,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          tension: 0.2, // Smooth line curve
-          spanGaps: true, // Skip NaN points (no line drawn)
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: {
-          title: {
-            display: true,
-            text: "Date",
-          },
-          // Use 'category' for simple date strings
-          type: "category",
-          ticks: {
-            maxRotation: 45,
-            minRotation: 45,
-          },
-        },
-        y: {
-          title: {
-            display: true,
-            text: "Profit (USD)",
-          },
-          beginAtZero: false, // Allow negative profits to show correctly
-          ticks: {
-            callback: function (value) {
-              return formatCurrency(value);
-            },
-          },
-        },
-      },
-      plugins: {
-        legend: {
-          display: false,
-        },
-        tooltip: {
-          callbacks: {
-            label: function (context) {
-              let label = context.dataset.label || "";
-              if (label) {
-                label += ": ";
-              }
-              if (!isNaN(context.parsed.y) && context.parsed.y !== null) {
-                label += formatCurrency(context.parsed.y);
-              } else {
-                label += "No Data";
-              }
-              return label;
-            },
-          },
-        },
-      },
-    },
-  });
-}
-
 // --- Initialization ---
 
 // Set up event listeners
@@ -381,7 +287,6 @@ syncDataBtn.addEventListener("click", syncData);
 searchItemDataBtn.addEventListener("click", searchItemData);
 generateSummaryBtn.addEventListener("click", generateDailySummary);
 findUndercutsBtn.addEventListener("click", findUndercuts);
-fetchProfitBtn.addEventListener("click", fetchProfitByDate);
 // NEW: Price history listener
 if (fetchPriceHistoryBtn) {
     fetchPriceHistoryBtn.addEventListener("click", fetchPriceHistory);
@@ -494,7 +399,6 @@ async function fetchPriceHistory() {
 }
 
 // CHART EVENT LISTENER
-fetchProfitBtn.addEventListener("click", fetchProfitByDate);
 
 dateTodayBtn.addEventListener("click", () => {
   dailyDateInput.value = getDates(1);
@@ -522,7 +426,6 @@ window.onload = () => {
   }
 
   // Set default date range for chart and initial data load for other sections
-  setDefaultDateRange(14);
   fetchMostRecentTimestamp();
   
   // Try populate from cache immediately, then refresh in background
@@ -914,54 +817,6 @@ async function generateDailySummary() {
   }
 }
 
-async function fetchProfitByDate() {
-    chartStatus.textContent = 'Fetching and processing profit data...';
-    chartStatus.classList.remove('text-red-500', 'text-gray-500');
-    chartStatus.classList.add('text-green-500');
-    
-    try {
-        const response = await fetch(`${BASE_URL}/profit_by_date`);
-        if (!response.ok) {
-            throw new Error(`HTTP Status: ${response.status}`);
-        }
-        
-        const rawData = await response.json(); 
-        
-        // Client-side filtering based on date inputs
-        const startDateStr = startDateInput.value;
-        const endDateStr = endDateInput.value;
-
-        if (!startDateStr || !endDateStr) {
-              chartStatus.textContent = 'Please select both a start and end date.';
-              chartStatus.classList.remove('text-orange-500');
-              chartStatus.classList.add('text-red-500');
-              return;
-        }
-
-        const filteredData = rawData.filter(item => {
-            return item.isodate >= startDateStr && item.isodate <= endDateStr;
-        }).sort((a, b) => a.isodate.localeCompare(b.isodate)); // Ensure chronological order
-
-        if (filteredData.length === 0) {
-            chartStatus.textContent = 'No profit data found for the selected date range.';
-            renderProfitChart([], []); // Clear chart
-            return;
-        }
-
-        const labels = filteredData.map(item => item.isodate);
-        // Use NaN for null values to skip them in the line chart rendering
-        const profits = filteredData.map(item => item.profit === null ? NaN : item.profit);
-
-        renderProfitChart(labels, profits);
-
-    } catch (error) {
-        chartStatus.textContent = `Chart fetching failed: ${error.message}. Check server logs.`;
-        chartStatus.classList.remove('text-orange-500');
-        chartStatus.classList.add('text-red-500');
-        renderProfitChart([], []); // Clear chart on error
-    }
-}
-
 // --- New functions: fetchMyListings, findUndercuts, renderUndercutResults ---
 
 /**
@@ -1190,3 +1045,154 @@ function toggleUndercutExpand(index) {
 
 // Make toggleUndercutExpand available globally
 window.toggleUndercutExpand = toggleUndercutExpand;
+
+// Resolve item name to itemId (tries cache then server)
+async function resolveItemIdByName(name) {
+  const lookupName = name.split("—")[0].trim().toLowerCase();
+  if (!lookupName) return null;
+
+  // try cached items
+  if (items && typeof items === "object" && Object.keys(items).length > 0) {
+    for (const [id, obj] of Object.entries(items)) {
+      const n = (obj.name || obj.item || obj.title || "").toLowerCase();
+      if (n === lookupName) return id;
+    }
+    for (const [id, obj] of Object.entries(items)) {
+      const n = (obj.name || obj.item || obj.title || "").toLowerCase();
+      if (n.includes(lookupName)) return id;
+    }
+  }
+
+  // fallback to server
+  const resp = await fetch(`${BASE_URL}/item_data/${encodeURIComponent(lookupName)}`);
+  if (!resp.ok) return null;
+  const json = await resp.json();
+  return json[lookupName] || null;
+}
+
+// Convert YYYY-MM-DD -> DD/MM/YYYY for backend expected format
+function toBackendDate(iso) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+async function fetchProfitForItem() {
+  const rawName = (profitItemInput.value || "").trim();
+  let itemId = null;
+  if (rawName) {
+    try {
+      itemId = await resolveItemIdByName(rawName);
+    } catch (e) {
+      itemId = null;
+    }
+  }
+
+  itemProfitStatus.textContent = "Resolving item...";
+  itemProfitTotal.textContent = "";
+
+  // validate dates
+  const start = profitStartDate.value;
+  const end = profitEndDate.value;
+  if (!start || !end) {
+    itemProfitStatus.textContent = "Select both start and end dates.";
+    return;
+  }
+
+  itemProfitStatus.textContent = "Fetching profit data...";
+
+  const backendStart = toBackendDate(start);
+  const backendEnd = toBackendDate(end);
+
+  try {
+    const resp = await fetch(`${BASE_URL}/calculate_profit?itemId=${encodeURIComponent(itemId)}&start_date=${encodeURIComponent(backendStart)}&end_date=${encodeURIComponent(backendEnd)}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    if (!Array.isArray(data) || data.length === 0) {
+      // clear chart if present
+      if (itemProfitChartInstance) {
+        itemProfitChartInstance.destroy();
+        itemProfitChartInstance = null;
+      }
+      itemProfitStatus.textContent = "No profit records for the selected range.";
+      itemProfitTotal.textContent = "";
+      return;
+    }
+
+    // Aggregate by date (server should already give per-date entries but ensure ordering)
+    data.sort((a, b) => a.date.localeCompare(b.date));
+    const labels = data.map(r => r.date);
+    const values = data.map(r => Number(r.profit) || 0);
+
+    // destroy previous chart instance if any
+    if (itemProfitChartInstance) {
+      itemProfitChartInstance.destroy();
+      itemProfitChartInstance = null;
+    }
+
+    itemProfitChartInstance = new Chart(itemProfitChartCanvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: `${rawName} — Profit`,
+          data: values,
+          borderColor: 'rgba(99,102,241,0.95)', // indigo-500
+          backgroundColor: 'rgba(99,102,241,0.12)',
+          fill: true,
+          tension: 0.25,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            ticks: { color: '#d1d5db' },
+            grid: { color: 'rgba(255,255,255,0.03)' }
+          },
+          y: {
+            ticks: {
+              color: '#d1d5db',
+              callback: v => formatCurrency(v)
+            },
+            grid: { color: 'rgba(255,255,255,0.03)' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#d1d5db' } },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${formatCurrency(ctx.parsed.y)}`
+            }
+          }
+        }
+      }
+    });
+
+    const total = values.reduce((s, n) => s + n, 0);
+    itemProfitStatus.textContent = "";
+    itemProfitTotal.textContent = `TOTAL: ${formatCurrency(total)}`;
+
+  } catch (err) {
+    if (itemProfitChartInstance) {
+      itemProfitChartInstance.destroy();
+      itemProfitChartInstance = null;
+    }
+    itemProfitStatus.textContent = `Fetch failed: ${err.message}`;
+    itemProfitTotal.textContent = "";
+  }
+}
+
+// wire up listener
+if (fetchItemProfitBtn) {
+  fetchItemProfitBtn.addEventListener("click", fetchProfitForItem);
+}
+
+// ensure default profit date range on load
+window.addEventListener("load", () => {
+  try { setDefaultProfitDateRange(7); } catch (e) {}
+});
