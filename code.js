@@ -1,5 +1,4 @@
-// The client-side JavaScript uses 'localhost' but will work on your local IP if accessed that way.
-const BASE_URL = "http://192.168.2.44:5000";
+const BASE_URL = window.location.href;
 
 // API key section
 const apiKeyInput = document.getElementById("api-key-input");
