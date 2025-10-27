@@ -22,6 +22,28 @@ def init_db():
     # Initializes the database with a simple table if it doesn't exist.
     conn = get_db_connection()
     cursor = conn.cursor()
+    marketTradeTable = cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='MARKET_TRADES';").fetchone()
+    if not marketTradeTable:
+        cursor.execute('''
+            CREATE TABLE MARKET_TRADES (
+                id TEXT PRIMARY KEY,
+                itemId int,
+                tradeType TEXT CHECK (tradeType IN ('BUY', 'SELL')),
+                quantity int,
+                price int,
+                timestamp int
+            );
+            ''')
+    itemDataTable = cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ITEM_DATA';").fetchone()
+    if not itemDataTable:
+        cursor.execute('''
+            CREATE TABLE ITEM_DATA (
+                itemId int PRIMARY KEY,
+                itemName TEXT,
+                sellValue int,
+                marketValue int
+            );
+            ''')
     conn.commit()
     conn.close()
 
@@ -49,6 +71,7 @@ def get_data():
 
 @app.route('/most_recent', methods=['GET'])
 def get_most_recent():
+    init_db()
     conn = get_db_connection()
     result = conn.execute('SELECT MAX(timestamp) FROM MARKET_TRADES').fetchone();
     conn.close()
@@ -75,10 +98,7 @@ def add_data():
     try:
         cursor = conn.cursor()
         for trade in trades:
-            print("Inserting")
-            print(trade)
             cursor.execute("INSERT OR REPLACE INTO MARKET_TRADES (id, itemId, tradeType, quantity, price, timestamp) VALUES (?, ?, ?, ?, ?, ?)", (trade['id'], trade['itemId'], trade['tradeType'], trade['quantity'], trade['price'], trade['timestamp']))
-            print("execute done")
         conn.commit()
         
     except sqlite3.Error as e:
