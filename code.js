@@ -211,6 +211,7 @@ function renderDailySummaryResults(summary) {
     return;
   }
 
+  // Filter for profit only if checkbox is checked
   summary = summary.filter(row => !displayProfitOnly || row.profit > 0);
 
   // Calculate Totals for relevant columns
@@ -227,36 +228,38 @@ function renderDailySummaryResults(summary) {
   // Map detail rows to HTML
   const detailRows = summary
     .map(
-      (row) => `
-      <tr>
-          <td class="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-200">${
-            row["itemName"]
-          }</td>
-          <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
-            row["isodate"] ?? "-"
-          }</td>
-          <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
-            row["buyCount"]
-          }</td>
-          <td class="px-2 py-2 whitespace-nowrap text-sm text-green-600">${formatCurrency(
-            row["avgBuyPrice"]
-          )}</td>
-          <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
-            row["sellCount"]
-          }</td>
-          <td class="px-2 py-2 whitespace-nowrap text-sm text-red-600">${formatCurrency(
-            row["avgSellPrice"]
-          )}</td>
-          <td class="px-2 py-2 whitespace-nowrap text-sm font-bold text-indigo-400">${formatCurrency(
-            row.profit
-          )}</td>
-      </tr>
-  `
+      (row) => {
+        // Look up item name from local items data
+        const itemName = items[row.itemId]?.name || `Unknown Item (${row.itemId})`;
+        
+        return `
+          <tr>
+              <td class="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-200">${itemName}</td>
+              <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
+                row["isodate"] ?? "-"
+              }</td>
+              <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
+                row["buyCount"]
+              }</td>
+              <td class="px-2 py-2 whitespace-nowrap text-sm text-green-600">${formatCurrency(
+                row["avgBuyPrice"]
+              )}</td>
+              <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${
+                row["sellCount"]
+              }</td>
+              <td class="px-2 py-2 whitespace-nowrap text-sm text-red-600">${formatCurrency(
+                row["avgSellPrice"]
+              )}</td>
+              <td class="px-2 py-2 whitespace-nowrap text-sm font-bold text-indigo-400">${formatCurrency(
+                row.profit
+              )}</td>
+          </tr>
+        `;
+      }
     )
     .join("");
 
   // Create Total Row HTML
-  // Note: Avg prices are shown as '--' as summing averages is generally not meaningful here.
   const totalRow = `
       <tr class="bg-indigo-50 font-extrabold border-t-2 border-indigo-500">
           <td class="px-2 py-2 whitespace-nowrap text-base text-indigo-800" colspan="2">TOTALS</td>

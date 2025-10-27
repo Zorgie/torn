@@ -44,6 +44,22 @@ def init_db():
                 marketValue int
             );
             ''')
+        
+    dailySummaryTable = cursor.execute("SELECT name FROM sqlite_master WHERE type='view' AND name='DAILY_SUMMARY';").fetchone()
+    if not dailySummaryTable:
+        cursor.execute('''
+            CREATE VIEW DAILY_SUMMARY AS SELECT *, sellCount * (avgSellPrice - avgBuyPrice) as profit FROM (
+            SELECT
+                itemId,
+                strftime('%Y-%m-%d', DATETIME(ROUND(timestamp), 'unixepoch')) AS isodate, 
+                SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) as buyCount,
+                SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) AS avgBuyPrice,
+                SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) as sellCount,
+                ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) AS avgSellPrice
+            FROM MARKET_TRADES
+            GROUP BY 1, 2)
+            ORDER BY profit DESC;
+            ''')
     conn.commit()
     conn.close()
 
@@ -150,7 +166,7 @@ def get_daily_summary():
             
             placeholders = ','.join('?' * len(dates))
             query = f'''
-                SELECT itemName, isodate, buyCount, avgBuyPrice, sellCount, avgSellPrice, profit
+                SELECT itemId, isodate, buyCount, avgBuyPrice, sellCount, avgSellPrice, profit
                 FROM DAILY_SUMMARY 
                 WHERE isodate IN ({placeholders})
                 ORDER BY isodate DESC, profit DESC
@@ -164,7 +180,7 @@ def get_daily_summary():
                 return jsonify({'error': 'start_date and end_date parameters are required'}), 400
             
             query = '''
-                SELECT itemName, isodate, buyCount, avgBuyPrice, sellCount, avgSellPrice, profit
+                SELECT itemId, isodate, buyCount, avgBuyPrice, sellCount, avgSellPrice, profit
                 FROM DAILY_SUMMARY 
                 WHERE isodate BETWEEN ? AND ?
                 ORDER BY isodate DESC, profit DESC
@@ -191,12 +207,12 @@ def get_total_summary():
     query = '''
             SELECT *, sellCount * (avgSellPrice - avgBuyPrice) as profit FROM (
             SELECT
-                itemName,
+                itemId,
                 SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) as buyCount,
                 SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) AS avgBuyPrice,
                 SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) as sellCount,
                 ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) AS avgSellPrice
-            FROM MARKET_TRADES NATURAL INNER JOIN ITEM_DATA
+            FROM MARKET_TRADES
             GROUP BY 1)
             ORDER BY profit DESC;
 '''
