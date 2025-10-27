@@ -695,7 +695,7 @@ async function fetchItems(forceRefresh = false) {
   }
   updateStatus("Fetching items from Torn API");
   const fetchItemsUrl = `https://api.torn.com/torn/?selections=items&key=${apiKey()}`;
-  const res = await fetch(fetchItemsUrl);
+  const res = await fetchWithRateLimit(fetchItemsUrl);
   const jsonRes = await res.json();
   // Torn returns { items: { id: { name, ... }, ... } } - accept either shape
   items = jsonRes.items || jsonRes || {};
@@ -766,7 +766,7 @@ async function searchItemData() {
     }
 
     // Fetch market listings using the resolved itemId
-    const itemMarketResponse = await fetch(
+    const itemMarketResponse = await fetchWithRateLimit(
       `https://api.torn.com/v2/market/${itemId}/itemmarket?limit=20&offset=0&key=${apiKey()}`
     );
     if (!itemMarketResponse.ok) {
@@ -827,7 +827,7 @@ async function fetchMyListings() {
   if (!apiKey()) throw new Error("API key required");
   const url = `https://api.torn.com/v2/user/itemmarket?key=${apiKey()}`;
 
-  const res = await fetch(url);
+  const res = await fetchWithRateLimit(url);
   if (!res.ok) throw new Error(`User itemmarket fetch failed: ${res.status}`);
   const json = await res.json();
 
