@@ -1,39 +1,34 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS # Import the CORS extension
 from google.cloud.sql.connector import Connector, IPTypes
-from flask import abort, request, render_template
+from flask import abort
 from time import strftime, localtime
+import time
 import datetime
-import time 
 import os # Import os for path handling
-import sqlite3
 import pymysql
 import sqlalchemy
 
-# --- Configuration ---
-DATABASE = 'torn.db' # Name of your SQLite file
+# --- Configuration (Kept for clarity, but only relevant for MySQL) ---
+# DATABASE = 'torn.db' # REMOVED: No longer using SQLite
 
+# --- Database Connection (Cloud SQL / SQLAlchemy) ---
 def connect_with_connector() -> sqlalchemy.engine.base.Engine:
     """
     Initializes a connection pool for a Cloud SQL instance of MySQL.
-
-    Uses the Cloud SQL Python Connector package.
     """
-    # Note: Saving credentials in environment variables is convenient, but not
-    # secure - consider a more secure solution such as
-    # Cloud Secret Manager (https://cloud.google.com/secret-manager) to help
-    # keep secrets safe.
-
+    # Using environment variables as before
     instance_connection_name = os.environ[
         "INSTANCE_CONNECTION_NAME"
-    ]  # e.g. 'project:region:instance'
-    db_user = os.environ["DB_USER"]  # e.g. 'my-db-user'
-    db_pass = os.environ["DB_PASS"]  # e.g. 'my-db-password'
-    db_name = os.environ["DB_NAME"]  # e.g. 'my-database'
+    ] # e.g. 'project:region:instance'
+    db_user = os.environ["DB_USER"] # e.g. 'my-db-user'
+    db_pass = os.environ["DB_PASS"] # e.g. 'my-db-password'
+    db_name = os.environ["DB_NAME"] # e.g. 'my-database'
 
     ip_type = IPTypes.PUBLIC # if os.environ.get("PRIVATE_IP") else IPTypes.PUBLIC
 
     # initialize Cloud SQL Python Connector object
+    # Note: Use pool_size=1 to prevent connection exhaustion in simple apps
     connector = Connector(ip_type=ip_type, refresh_strategy="LAZY")
 
     def getconn() -> pymysql.connections.Connection:
@@ -49,87 +44,105 @@ def connect_with_connector() -> sqlalchemy.engine.base.Engine:
     pool = sqlalchemy.create_engine(
         "mysql+pymysql://",
         creator=getconn,
-        # ...
+        # Pool size and timeout settings are good practice for production
+        pool_size=5, 
+        max_overflow=2,
+        pool_timeout=30, # seconds
+        pool_recycle=1800, # seconds
     )
     return pool
 
-def get_db_connection():
-    # Establishes a connection to the SQLite database.
-    # The 'check_same_thread=False' is important for Flask to avoid thread errors
-    # when handling multiple requests concurrently.
-    conn = sqlite3.connect(DATABASE, check_same_thread=False)
-    conn.row_factory = sqlite3.Row # Allows accessing columns by name
-    return conn
+# --- Database Initialization (Now uses Cloud SQL/SQLAlchemy) ---
 
-def init_db():
-    # Initializes the database with a simple table if it doesn't exist.
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    marketTradeTable = cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='MARKET_TRADES';").fetchone()
-    if not marketTradeTable:
-        cursor.execute('''
-            CREATE TABLE MARKET_TRADES (
-                id TEXT PRIMARY KEY,
-                itemId int,
-                tradeType TEXT CHECK (tradeType IN ('BUY', 'SELL')),
-                quantity int,
-                price int,
-                timestamp int
+def initialize_database(pool: sqlalchemy.engine.base.Engine):
+    """
+    Initializes tables (MARKET_TRADES, ITEM_DATA) and view (DAILY_SUMMARY) 
+    in the MySQL database if they do not exist.
+    """
+    with pool.connect() as db_conn:
+        # Create MARKET_TRADES Table
+        # Using VARCHAR for id, primary key.
+        # userId is added here as it's used in add_data and calculate_profit.
+        db_conn.execute(sqlalchemy.text('''
+            CREATE TABLE IF NOT EXISTS MARKET_TRADES (
+                id VARCHAR(255) PRIMARY KEY,
+                userId VARCHAR(255),
+                itemId INT,
+                tradeType ENUM('BUY', 'SELL'), -- MySQL uses ENUM, not CHECK
+                quantity INT,
+                price INT,
+                timestamp INT,
+                INDEX idx_userId (userId),
+                INDEX idx_itemId (itemId),
+                INDEX idx_timestamp (timestamp)
             );
-            ''')
-    itemDataTable = cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ITEM_DATA';").fetchone()
-    if not itemDataTable:
-        cursor.execute('''
-            CREATE TABLE ITEM_DATA (
-                itemId int PRIMARY KEY,
-                itemName TEXT,
-                sellValue int,
-                marketValue int
+        '''))
+
+        # Create ITEM_DATA Table
+        db_conn.execute(sqlalchemy.text('''
+            CREATE TABLE IF NOT EXISTS ITEM_DATA (
+                itemId INT PRIMARY KEY,
+                itemName VARCHAR(255),
+                sellValue INT,
+                marketValue INT
             );
-            ''')
+        '''))
         
-    dailySummaryTable = cursor.execute("SELECT name FROM sqlite_master WHERE type='view' AND name='DAILY_SUMMARY';").fetchone()
-    if not dailySummaryTable:
-        cursor.execute('''
-            CREATE VIEW DAILY_SUMMARY AS SELECT *, sellCount * (avgSellPrice - avgBuyPrice) as profit FROM (
-            SELECT
-                itemId,
-                strftime('%Y-%m-%d', DATETIME(ROUND(timestamp), 'unixepoch')) AS isodate, 
-                SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) as buyCount,
-                SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) AS avgBuyPrice,
-                SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) as sellCount,
-                ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) AS avgSellPrice
-            FROM MARKET_TRADES
-            GROUP BY 1, 2)
-            ORDER BY profit DESC;
-            ''')
-    conn.commit()
-    conn.close()
+        # Create DAILY_SUMMARY View (Need to drop and re-create if it exists)
+        # Note: MySQL's date formatting is different (DATE_FORMAT and FROM_UNIXTIME)
+        db_conn.execute(sqlalchemy.text("DROP VIEW IF EXISTS DAILY_SUMMARY;"))
+        db_conn.execute(sqlalchemy.text('''
+            CREATE VIEW DAILY_SUMMARY AS 
+            SELECT 
+                t.userId,
+                t.itemId, 
+                DATE(FROM_UNIXTIME(t.timestamp)) AS isodate, 
+                SUM(CASE WHEN t.tradeType = 'BUY' THEN t.quantity ELSE 0 END) AS buyCount,
+                COALESCE(SUM(CASE WHEN t.tradeType = 'BUY' THEN t.price * t.quantity ELSE 0 END) / NULLIF(SUM(CASE WHEN t.tradeType = 'BUY' THEN t.quantity ELSE 0 END), 0), 0) AS avgBuyPrice,
+                SUM(CASE WHEN t.tradeType = 'SELL' THEN t.quantity ELSE 0 END) AS sellCount,
+                COALESCE(ROUND(SUM(CASE WHEN t.tradeType = 'SELL' THEN t.price * t.quantity * 0.95 ELSE 0 END)) / NULLIF(SUM(CASE WHEN t.tradeType = 'SELL' THEN t.quantity ELSE 0 END), 0), 0) AS avgSellPrice,
+                SUM(CASE WHEN t.tradeType = 'SELL' THEN t.quantity ELSE 0 END) * (
+                    COALESCE(ROUND(SUM(CASE WHEN t.tradeType = 'SELL' THEN t.price * t.quantity * 0.95 ELSE 0 END)) / NULLIF(SUM(CASE WHEN t.tradeType = 'SELL' THEN t.quantity ELSE 0 END), 0), 0) - 
+                    COALESCE(SUM(CASE WHEN t.tradeType = 'BUY' THEN t.price * t.quantity ELSE 0 END) / NULLIF(SUM(CASE WHEN t.tradeType = 'BUY' THEN t.quantity ELSE 0 END), 0), 0)
+                ) AS profit
+            FROM MARKET_TRADES t
+            GROUP BY 1, 2, 3;
+        '''))
+        db_conn.commit()
+
 
 # Initialize the Flask app and the database
 app = Flask(__name__)
-
-init_db()
+db_pool = connect_with_connector() # Connect once globally (pool)
 
 # --- CORS Configuration ---
-# It enables CORS for all routes (/*) and allows all origins (*).
-# For a local network/development environment, this is the simplest and most effective approach.
 CORS(app)
+
+# --- Authorization Helper ---
+def authorize(user_id, secret):
+    """Placeholder for authorization logic using the Cloud SQL pool."""
+    with db_pool.connect() as db_conn:
+        userIdLookup = db_conn.execute(
+            sqlalchemy.text("SELECT id FROM USER_ID_LOOKUP WHERE id =:user_Id AND secret =:secret"), 
+            {"user_Id": user_id, "secret": secret}
+        ).fetchone()
+    return userIdLookup is not None
+
 
 # --- API Endpoints ---
 @app.route('/most_recent', methods=['GET'])
 def get_most_recent():
-    pool = connect_with_connector()
-    with pool.connect() as db_conn:
-        result = db_conn.execute(sqlalchemy.text("SELECT MAX(timestamp) FROM MARKET_TRADES")).fetchone()
+    userId = request.headers.get('X-User-Id') # None if missing
+    secret = request.headers.get('X-Secret')
+    
+    if not authorize(userId, secret):
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    with db_pool.connect() as db_conn:
+        result = db_conn.execute(sqlalchemy.text("SELECT MAX(timestamp) FROM MARKET_TRADES WHERE userId=:userId"), {"userId": userId}).fetchone()
 
-    if result and result[0] is not None:
-        # result[0] accesses the value from the first (and only) column
-        most_recent_timestamp = result[0] 
-    else:
-        most_recent_timestamp = None
-        
-    # Return the value directly as a simple JSON object
+    most_recent_timestamp = result[0] if result and result[0] is not None else None
+    
     return jsonify({"most_recent_timestamp": most_recent_timestamp})
 
 
@@ -140,74 +153,76 @@ def add_data():
     
     item_data = request.get_json()
     trades = item_data.get('trades')
-    userId = request.headers.get('X-User-Id')   # None if missing
-    secret  = request.headers.get('X-Secret')
+    userId = request.headers.get('X-User-Id') # None if missing
+    secret = request.headers.get('X-Secret')
+    
     if not authorize(userId, secret):
         return jsonify({"error": "Unauthorized"}), 401
     
-    pool = connect_with_connector()
-    with pool.connect() as db_conn:
+    with db_pool.connect() as db_conn:
+        # Use executemany for efficiency
+        trade_params = []
         for trade in trades:
-            db_conn.execute(sqlalchemy.text("INSERT INTO MARKET_TRADES (userId, id, itemId, tradeType, quantity, price, timestamp) VALUES (:userId, :id, :itemId, :tradeType, :quantity, :price, :timestamp) ON DUPLICATE KEY UPDATE itemId=:itemId, tradeType=:tradeType, quantity=:quantity, price=:price, timestamp=:timestamp"), 
-                            {"userId": userId, "id": trade['id'], "itemId": trade['itemId'], "tradeType": trade['tradeType'], "quantity": trade['quantity'], "price": trade['price'], "timestamp": trade['timestamp']})
-            db_conn.commit()
-            print("row added")
+             # Ensure trade has all required keys or handle missing ones gracefully
+            trade_params.append({
+                "userId": userId, 
+                "id": trade['id'], 
+                "itemId": trade['itemId'], 
+                "tradeType": trade['tradeType'], 
+                "quantity": trade['quantity'], 
+                "price": trade['price'], 
+                "timestamp": trade['timestamp']
+            })
+            
+        # The query must be modified to include userId in the INSERT/UPDATE
+        db_conn.execute(
+            sqlalchemy.text("INSERT INTO MARKET_TRADES (userId, id, itemId, tradeType, quantity, price, timestamp) VALUES (:userId, :id, :itemId, :tradeType, :quantity, :price, :timestamp) ON DUPLICATE KEY UPDATE userId=:userId, itemId=:itemId, tradeType=:tradeType, quantity=:quantity, price=:price, timestamp=:timestamp"), 
+            trade_params # Pass the list of dictionaries
+        )
+        db_conn.commit()
             
     return jsonify({"message": "Items added successfully"}), 201
 
-def authorize(user_id, secret):
-    # Placeholder for authorization logic
-    # Return True if authorized, False otherwise
-    pool = connect_with_connector()
-    with pool.connect() as db_conn:
-        userIdLookup = db_conn.execute(sqlalchemy.text("SELECT id FROM USER_ID_LOOKUP WHERE id =:user_Id AND secret =:secret"), {"user_Id": user_id, "secret": secret}).fetchone()
-    return userIdLookup is not None
-
 @app.route('/item_data/<itemName>', methods=['GET'])
 def get_item_data(itemName):
-    # The item name is passed as part of the URL path
-    conn = get_db_connection()
-    
+    # Uses global db_pool
     try:
-        # Select price and quantity for the given symbol, limited to 20 most recent results
-        result = conn.execute(
-            'SELECT itemId FROM ITEM_DATA WHERE UPPER(itemName) = UPPER(?)', 
-            (itemName,)
-        ).fetchone()
+        with db_pool.connect() as db_conn:
+            # Select itemId from ITEM_DATA
+            result = db_conn.execute(
+                sqlalchemy.text('SELECT itemId FROM ITEM_DATA WHERE UPPER(itemName) = UPPER(:itemName)'), 
+                {'itemName': itemName}
+            ).fetchone()
     
-        conn.close()
+        itemId = result[0] if result and result[0] is not None else None
         
-        if result and result[0] is not None:
-            # result[0] accesses the value from the first (and only) column
-            itemId = result[0] 
-        else:
-            itemId = None
-            
-        # Return the value directly as a simple JSON object
         return jsonify({itemName: itemId})
 
-    except sqlite3.Error as e:
-        conn.close()
-        # Return a 500 error if there's a database issue
+    except Exception as e: # Catching a broader exception for DB issues
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
 @app.route('/daily_summary', methods=['GET', 'POST'])
 def get_daily_summary():
-    conn = get_db_connection()
-    try:
+    userId = request.headers.get('X-User-Id') # None if missing
+    secret = request.headers.get('X-Secret')
+    
+    if not authorize(userId, secret):
+        return jsonify({"error": "Unauthorized"}), 401
+    with db_pool.connect() as db_conn:
         if request.method == 'POST':
             dates = request.json.get('dates', [])
             if not dates:
                 return jsonify({'error': 'No dates provided'}), 400
             
-            placeholders = ','.join('?' * len(dates))
-            query = f'''
+            # Using SQLAlchemy's text with bound parameters for safe IN clause
+            query = sqlalchemy.text('''
                 SELECT itemId, isodate, buyCount, avgBuyPrice, sellCount, avgSellPrice, profit
                 FROM DAILY_SUMMARY 
-                WHERE isodate IN ({placeholders})
+                WHERE isodate IN :dates
                 ORDER BY isodate DESC, profit DESC
-            '''
-            results = conn.execute(query, dates).fetchall()
+            ''').bindparams(dates=tuple(dates)) # Pass as a tuple to bind to :dates
+            
+            results = db_conn.execute(query).fetchall()
         else:
             start_date = request.args.get('start_date')
             end_date = request.args.get('end_date')
@@ -215,47 +230,50 @@ def get_daily_summary():
             if not start_date or not end_date:
                 return jsonify({'error': 'start_date and end_date parameters are required'}), 400
             
-            query = '''
+            query = sqlalchemy.text('''
                 SELECT itemId, isodate, buyCount, avgBuyPrice, sellCount, avgSellPrice, profit
                 FROM DAILY_SUMMARY 
-                WHERE isodate BETWEEN ? AND ?
+                WHERE isodate BETWEEN :start_date AND :end_date
                 ORDER BY isodate DESC, profit DESC
-            '''
-            results = conn.execute(query, (start_date, end_date)).fetchall()
+            ''')
+            results = db_conn.execute(query, {'start_date': start_date, 'end_date': end_date}).fetchall()
     
-        return jsonify([dict(ix) for ix in results])
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        conn.close()
+    # Convert SQLAlchemy Rows to dictionary list
+    return jsonify([ix._asdict() for ix in results])
 
 @app.route('/profit_by_date', methods=['GET'])
 def get_profit_by_date():
-    conn = get_db_connection()
-    results = conn.execute("SELECT isodate, sum(profit) as profit FROM DAILY_SUMMARY GROUP BY 1;").fetchall()
-    conn.close()
+    # Uses global db_pool
+    query = sqlalchemy.text("SELECT isodate, SUM(profit) AS profit FROM DAILY_SUMMARY GROUP BY 1 ORDER BY isodate DESC;")
     
-    return jsonify([dict(ix) for ix in results])
+    with db_pool.connect() as db_conn:
+        results = db_conn.execute(query).fetchall()
+    
+    # Convert SQLAlchemy Rows to dictionary list
+    return jsonify([ix._asdict() for ix in results])
 
 @app.route('/total_summary', methods=['GET'])
 def get_total_summary():
-    query = '''
-            SELECT *, sellCount * (avgSellPrice - avgBuyPrice) as profit FROM (
-            SELECT
-                itemId,
-                SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) as buyCount,
-                SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) AS avgBuyPrice,
-                SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) as sellCount,
-                ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) AS avgSellPrice
-            FROM MARKET_TRADES
-            GROUP BY 1)
-            ORDER BY profit DESC;
-'''
-    conn = get_db_connection()
-    results = conn.execute(query).fetchall()
-    conn.close()
-    return jsonify([dict(ix) for ix in results])
+    query = sqlalchemy.text('''
+        SELECT
+            itemId,
+            SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END) AS buyCount,
+            COALESCE(SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / NULLIF(SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END), 0), 0) AS avgBuyPrice,
+            SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) AS sellCount,
+            COALESCE(ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / NULLIF(SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END), 0), 0) AS avgSellPrice,
+            SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END) * (
+                COALESCE(ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / NULLIF(SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END), 0), 0) -
+                COALESCE(SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / NULLIF(SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END), 0), 0)
+            ) AS profit
+        FROM MARKET_TRADES
+        GROUP BY 1
+        ORDER BY profit DESC;
+    ''')
+
+    with db_pool.connect() as db_conn:
+        results = db_conn.execute(query).fetchall()
+
+    return jsonify([ix._asdict() for ix in results])
 
 @app.route('/')
 def root():
@@ -350,5 +368,4 @@ def calculate_profit():
 
 if __name__ == '__main__':
     # '0.0.0.0' makes the server reachable from other devices on the local network.
-    # '127.0.0.1' or 'localhost' would restrict it to the host machine only.
     app.run(host='0.0.0.0', port=5000, debug=True)
