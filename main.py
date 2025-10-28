@@ -1,14 +1,57 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS # Import the CORS extension
+from google.cloud.sql.connector import Connector, IPTypes
 from flask import abort, request, render_template
 from time import strftime, localtime
 import datetime
 import time 
 import os # Import os for path handling
 import sqlite3
+import pymysql
+import sqlalchemy
 
 # --- Configuration ---
 DATABASE = 'torn.db' # Name of your SQLite file
+
+def connect_with_connector() -> sqlalchemy.engine.base.Engine:
+    """
+    Initializes a connection pool for a Cloud SQL instance of MySQL.
+
+    Uses the Cloud SQL Python Connector package.
+    """
+    # Note: Saving credentials in environment variables is convenient, but not
+    # secure - consider a more secure solution such as
+    # Cloud Secret Manager (https://cloud.google.com/secret-manager) to help
+    # keep secrets safe.
+
+    instance_connection_name = os.environ[
+        "INSTANCE_CONNECTION_NAME"
+    ]  # e.g. 'project:region:instance'
+    db_user = os.environ["DB_USER"]  # e.g. 'my-db-user'
+    db_pass = os.environ["DB_PASS"]  # e.g. 'my-db-password'
+    db_name = os.environ["DB_NAME"]  # e.g. 'my-database'
+
+    ip_type = IPTypes.PUBLIC # if os.environ.get("PRIVATE_IP") else IPTypes.PUBLIC
+
+    # initialize Cloud SQL Python Connector object
+    connector = Connector(ip_type=ip_type, refresh_strategy="LAZY")
+
+    def getconn() -> pymysql.connections.Connection:
+        conn: pymysql.connections.Connection = connector.connect(
+            instance_connection_name,
+            "pymysql",
+            user=db_user,
+            password=db_pass,
+            db=db_name,
+        )
+        return conn
+
+    pool = sqlalchemy.create_engine(
+        "mysql+pymysql://",
+        creator=getconn,
+        # ...
+    )
+    return pool
 
 def get_db_connection():
     # Establishes a connection to the SQLite database.
@@ -74,24 +117,11 @@ init_db()
 CORS(app)
 
 # --- API Endpoints ---
-
-@app.route('/data', methods=['GET'])
-def get_data():
-    conn = get_db_connection()
-    items = conn.execute('SELECT * FROM TEST_TABLE LIMIT 10').fetchall()
-    conn.close()
-    
-    # Convert rows to a list of dictionaries for JSON response
-    # items = [dict(row) for row in items] # Already handled by row_factory above, but good to know
-    
-    return jsonify([dict(ix) for ix in items])
-
 @app.route('/most_recent', methods=['GET'])
 def get_most_recent():
-    init_db()
-    conn = get_db_connection()
-    result = conn.execute('SELECT MAX(timestamp) FROM MARKET_TRADES').fetchone();
-    conn.close()
+    pool = connect_with_connector()
+    with pool.connect() as db_conn:
+        result = db_conn.execute(sqlalchemy.text("SELECT MAX(timestamp) FROM MARKET_TRADES")).fetchone()
 
     if result and result[0] is not None:
         # result[0] accesses the value from the first (and only) column
@@ -110,23 +140,28 @@ def add_data():
     
     item_data = request.get_json()
     trades = item_data.get('trades')
+    userId = request.headers.get('X-User-Id')   # None if missing
+    secret  = request.headers.get('X-Secret')
+    if not authorize(userId, secret):
+        return jsonify({"error": "Unauthorized"}), 401
     
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
+    pool = connect_with_connector()
+    with pool.connect() as db_conn:
         for trade in trades:
-            cursor.execute("INSERT OR REPLACE INTO MARKET_TRADES (id, itemId, tradeType, quantity, price, timestamp) VALUES (?, ?, ?, ?, ?, ?)", (trade['id'], trade['itemId'], trade['tradeType'], trade['quantity'], trade['price'], trade['timestamp']))
-        conn.commit()
-        
-    except sqlite3.Error as e:
-        conn.rollback()
-        print("exception")
-        print(e)
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
-    # Optionally, return the newly created item's ID
-    return jsonify({"message": "Item added successfully"}), 201
+            db_conn.execute(sqlalchemy.text("INSERT INTO MARKET_TRADES (userId, id, itemId, tradeType, quantity, price, timestamp) VALUES (:userId, :id, :itemId, :tradeType, :quantity, :price, :timestamp) ON DUPLICATE KEY UPDATE itemId=:itemId, tradeType=:tradeType, quantity=:quantity, price=:price, timestamp=:timestamp"), 
+                            {"userId": userId, "id": trade['id'], "itemId": trade['itemId'], "tradeType": trade['tradeType'], "quantity": trade['quantity'], "price": trade['price'], "timestamp": trade['timestamp']})
+            db_conn.commit()
+            print("row added")
+            
+    return jsonify({"message": "Items added successfully"}), 201
+
+def authorize(user_id, secret):
+    # Placeholder for authorization logic
+    # Return True if authorized, False otherwise
+    pool = connect_with_connector()
+    with pool.connect() as db_conn:
+        userIdLookup = db_conn.execute(sqlalchemy.text("SELECT id FROM USER_ID_LOOKUP WHERE id =:user_Id AND secret =:secret"), {"user_Id": user_id, "secret": secret}).fetchone()
+    return userIdLookup is not None
 
 @app.route('/item_data/<itemName>', methods=['GET'])
 def get_item_data(itemName):
@@ -228,15 +263,28 @@ def root():
 
 @app.route('/calculate_profit', methods=['GET'])
 def calculate_profit():
-    conn = get_db_connection()
+    # conn = get_db_connection()
     
     # Get optional filters from query parameters
     item_id = request.args.get('itemId')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    userId = request.headers.get('X-User-Id')   # None if missing
+    secret  = request.headers.get('X-Secret')
+    if not authorize(userId, secret):
+        return jsonify({"error": "Unauthorized"}), 401
 
     # Build the query based on filters
     query = 'SELECT * FROM MARKET_TRADES'
+    pool = connect_with_connector()
+    with pool.connect() as db_conn:
+        result = db_conn.execute(
+            sqlalchemy.text("SELECT * FROM MARKET_TRADES WHERE userId=:userId ORDER BY timestamp ASC"),
+            {"userId": userId}
+        )
+        # .mappings().all() returns a list of dict-like rows
+        trades = result.mappings().all()
+
     filters = []
     if item_id and item_id != 'null':
         filters.append('itemId = ?')
@@ -256,18 +304,19 @@ def calculate_profit():
     if start_date and end_date:
         params.extend([start_timestamp, end_timestamp])
     
-    trades = conn.execute(query, params).fetchall()
-    conn.close()
+    # trades = conn.execute(query, params).fetchall()
+    # conn.close()
 
     stock = {}
     total_buy_price = {}
     profit_dict = {}
 
     for trade in trades:
-        item_id = trade['itemId']
-        trade_type = trade['tradeType']
-        quantity = trade['quantity']
-        price = trade['price']
+        item_id   = trade.get('itemId')
+        trade_type = trade.get('tradeType')
+        quantity  = int(trade.get('quantity') or 0)
+        price     = int(trade.get('price') or 0)
+        ts        = int(trade.get('timestamp') or 0)
 
         if item_id not in stock:
             stock[item_id] = 0
@@ -284,7 +333,7 @@ def calculate_profit():
             total_buy_price[item_id] = max(total_buy_price[item_id], 0)
             profit = quantity * (price * 0.95 - avg_buy_price)
 
-            date = strftime('%Y-%m-%d', localtime(trade['timestamp']))
+            date = strftime('%Y-%m-%d', localtime(ts))
             if date not in profit_dict:
                 profit_dict[date] = 0.0
             profit_dict[date] += profit

@@ -3,8 +3,6 @@ const BASE_URL = window.location.href;
 // API key section
 const apiKeyInput = document.getElementById("api-key-input");
 const API_KEY_STORAGE_KEY = "torn_api_key";
-const USER_ID_STORAGE_KEY = "torn_user_id";
-const SECRET_STORAGE_KEY = "torn_secret";
 
 const dataListContainer = document.getElementById("data-list-container");
 const recentTimestampOutput = document.getElementById(
@@ -13,42 +11,6 @@ const recentTimestampOutput = document.getElementById(
 const fetchRecentBtn = document.getElementById("fetch-recent-btn");
 const refreshDataBtn = document.getElementById("refresh-data-btn");
 const syncDataBtn = document.getElementById("sync-data-btn");
-const userIdInput = document.getElementById("user-id-input");
-const secretInput = document.getElementById("secret-input");
-
-// Monkey-patch global fetch so requests to our backend (BASE_URL) include the stored User ID and Secret
-const _originalFetch = window.fetch.bind(window);
-window.fetch = async function(input, init = {}) {
-  try {
-  const url = typeof input === 'string' ? input : (input && input.url) || '';
-  // Only attach headers to backend (same origin) requests — do NOT attach to Torn API calls
-  const backendOrigin = window.location.origin || BASE_URL.replace(/\/$/, '');
-  const isBackendRequest = url && (url.startsWith(BASE_URL) || url.startsWith(backendOrigin) || url.startsWith(backendOrigin + '/'));
-  if (isBackendRequest) {
-      const userId = localStorage.getItem(USER_ID_STORAGE_KEY);
-      const secret = localStorage.getItem(SECRET_STORAGE_KEY);
-
-      // Merge headers, preserving any passed headers
-      const merged = new Headers(init.headers || (typeof input !== 'string' && input.headers) || {});
-      if (userId) merged.set('X-User-Id', userId);
-      if (secret) merged.set('X-Secret', secret);
-
-      // If input is a Request object, create a new Request so headers are applied
-      if (typeof input !== 'string' && input instanceof Request) {
-        const newReq = new Request(input, { headers: merged });
-        return _originalFetch(newReq, init);
-      }
-
-      // Otherwise, pass the merged headers via init
-      const newInit = Object.assign({}, init, { headers: merged });
-      return _originalFetch(input, newInit);
-    }
-  } catch (err) {
-    // If our header-attach logic fails, fall back to original fetch
-    console.warn('fetch wrapper error', err);
-  }
-  return _originalFetch(input, init);
-};
 
 // Item search selectors
 const searchItemDataBtn = document.getElementById("search-item-btn");
@@ -475,32 +437,11 @@ apiKeyInput.addEventListener("input", function () {
   }
 });
 
-if (userIdInput) {
-  userIdInput.addEventListener('input', function() {
-    localStorage.setItem(USER_ID_STORAGE_KEY, this.value || '');
-  });
-}
-
-if (secretInput) {
-  secretInput.addEventListener('input', function() {
-    localStorage.setItem(SECRET_STORAGE_KEY, this.value || '');
-  });
-}
-
 // Initial load of data when the page loads
 window.onload = () => {
   const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
   if (savedApiKey) {
     apiKeyInput.value = savedApiKey;
-  }
-  // Load saved user id and secret
-  try {
-    const savedUserId = localStorage.getItem(USER_ID_STORAGE_KEY);
-    if (savedUserId && userIdInput) userIdInput.value = savedUserId;
-    const savedSecret = localStorage.getItem(SECRET_STORAGE_KEY);
-    if (savedSecret && secretInput) secretInput.value = savedSecret;
-  } catch (e) {
-    // ignore
   }
 
   // Set default date range for chart and initial data load for other sections
@@ -600,7 +541,7 @@ async function fetchPartial(
       sellRes.push(value);
     }
   }
-  if (Object.entries(jsonRes.log).length === 100) {
+  if (Object.entries(jsonRes.log).length === 200) {
     return fetchPartial(
       buyRes,
       sellRes,
