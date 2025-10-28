@@ -50,6 +50,13 @@ const itemProfitStatus = document.getElementById("item-profit-status");
 const itemProfitTotal = document.getElementById("item-profit-total");
 let itemProfitChartInstance = null;
 
+// Halloween report selectors
+const halloweenStartInput = document.getElementById("halloween-start");
+const halloweenEndInput = document.getElementById("halloween-end");
+const halloweenGenerateBtn = document.getElementById("halloween-generate-btn");
+const halloweenStatus = document.getElementById("halloween-status");
+const halloweenResultsBody = document.getElementById("halloween-results-body");
+
 // Add global items store and storage key
 let items = {}; // will hold the items JSON (id -> {name,...})
 const ITEMS_STORAGE_KEY = "torn_items_v1";
@@ -289,6 +296,10 @@ syncDataBtn.addEventListener("click", syncData);
 searchItemDataBtn.addEventListener("click", searchItemData);
 generateSummaryBtn.addEventListener("click", generateDailySummary);
 findUndercutsBtn.addEventListener("click", findUndercuts);
+// Halloween report listener
+if (halloweenGenerateBtn) {
+  halloweenGenerateBtn.addEventListener("click", fetchHalloweenReport);
+}
 // NEW: Price history listener
 if (fetchPriceHistoryBtn) {
     fetchPriceHistoryBtn.addEventListener("click", fetchPriceHistory);
@@ -298,6 +309,12 @@ if (fetchPriceHistoryBtn) {
     start.setDate(start.getDate() - 30);
     priceHistoryStartDate.value = formatDate(start);
     priceHistoryEndDate.value = formatDate(end);
+}
+
+// Set default Halloween report window (UTC times shown as local datetime-local values)
+if (halloweenStartInput && halloweenEndInput) {
+  halloweenStartInput.value = "2025-10-25T14:00";
+  halloweenEndInput.value = "2025-10-31T14:00";
 }
 
 async function fetchPriceHistory() {
@@ -705,6 +722,161 @@ async function fetchItems(forceRefresh = false) {
   writeCachedItems(items);
   populateItemDatalist(items);
   updateStatus("Items fetched and cached");
+}
+
+// --- Halloween report: fetch faction members and outgoing attacks (paginated) ---
+async function fetchFactionMembers() {
+  if (!apiKey()) throw new Error("API key required");
+  const url = `https://api.torn.com/v2/faction/members?striptags=true&key=${apiKey()}`;
+  const res = await fetchWithRateLimit(url);
+  if (!res.ok) throw new Error(`Faction members fetch failed: ${res.status}`);
+  const json = await res.json();
+  const members = json.members || json || {};
+  const idToName = {};
+  for (const member of members) {
+    // obj may contain { name, level, ... }
+    idToName[member.id] = member.name
+  }
+  return idToName;
+}
+
+async function fetchFactionAttacksPaginated(fromTs, toTs) {
+  if (!apiKey()) throw new Error("API key required");
+  let all = [];
+  let toParam = toTs;
+  while (true) {
+    let url = `https://api.torn.com/v2/faction/attacksfull?filters=outgoing&limit=1000&sort=DESC&key=${apiKey()}`;
+    if (fromTs) url += `&from=${fromTs}`;
+    if (toParam) url += `&to=${toParam}`;
+    halloweenStatus && (halloweenStatus.innerText = `Fetching attacks (to=${toParam || 'latest'}) — fetched ${all.length}`);
+    const res = await fetchWithRateLimit(url);
+    if (!res.ok) throw new Error(`Attacks fetch failed: ${res.status}`);
+    const json = await res.json();
+
+    // Normalize to an array of attacks
+    let chunk = json.attacks;
+
+    if (!Array.isArray(chunk) || chunk.length === 0) break;
+    all.push(...chunk);
+
+    if (chunk.length < 1000) break;
+
+    // Find minimum timestamp in this chunk to page
+    let minTs = Number.MAX_SAFE_INTEGER;
+    for (const a of chunk) {
+      const ts = a.started;
+      const n = Number(ts);
+      if (!Number.isNaN(n)) minTs = Math.min(minTs, n);
+    }
+    if (minTs === Number.MAX_SAFE_INTEGER) break;
+    toParam = minTs - 1;
+    // be polite to the API
+    await sleep(200);
+  }
+  return all;
+}
+
+function getAttackTimestamp(a) {
+  return Number(a.timestamp || a.time || a.date || a.attack_time || (a.attacked && a.attacked.timestamp) || 0);
+}
+
+function getAttackerId(a) {
+  // try several common shapes
+  if (!a) return null;
+  return a.attacker_id || a.attacker?.player_id || a.attacker?.id || a.attackerId || a.attacker?.id || a.attacker || a.attacker_name || a.attacker_name;
+}
+
+async function fetchHalloweenReport() {
+  if (!apiKey()) {
+    halloweenStatus && (halloweenStatus.innerText = "Set an API key first.");
+    return;
+  }
+
+  try {
+    halloweenStatus && (halloweenStatus.innerText = "Fetching faction members...");
+    const members = await fetchFactionMembers(); // id -> name
+
+    // parse date inputs (datetime-local -> epoch seconds)
+    const fromVal = halloweenStartInput && halloweenStartInput.value;
+    const toVal = halloweenEndInput && halloweenEndInput.value;
+    const fromTs = fromVal ? Math.floor(new Date(fromVal).getTime() / 1000) : null;
+    const toTs = toVal ? Math.floor(new Date(toVal).getTime() / 1000) : null;
+
+    halloweenStatus && (halloweenStatus.innerText = "Fetching faction attacks (this may take a while)...");
+    const attacks = await fetchFactionAttacksPaginated(fromTs, toTs);
+
+    halloweenStatus && (halloweenStatus.innerText = `Fetched ${attacks.length} attacks — aggregating by attacker...`);
+
+    // Aggregate attacks per attacker
+    const byAttacker = {};
+    let milsoulAttacks = 0;
+    for (const atk of attacks) {
+      const defender = atk.defender;
+      if (defender.id === 3170298) {// Milsoul
+        milsoulAttacks += 1;
+      }
+      const rawAttacker = getAttackerId(atk);
+      let key = rawAttacker ? String(rawAttacker) : null;
+      // if key is not numeric, try to resolve by name
+      let displayName = null;
+      if (key && /^\d+$/.test(key) && members[key]) {
+        displayName = members[key];
+      } else if (key && typeof key === 'string' && !/^\d+$/.test(key)) {
+        // try find member by exact name match
+        const found = Object.entries(members).find(([id, name]) => name && name.toLowerCase() === key.toLowerCase());
+        if (found) {
+          key = found[0];
+          displayName = found[1];
+        } else {
+          displayName = key; // use raw as fallback
+        }
+      } else {
+        // fallback: try attacker name field
+        displayName = atk.attacker && (atk.attacker.name || atk.attacker.player_name) || atk.attacker_name || "Unknown";
+      }
+
+      const ts = getAttackTimestamp(atk) || 0;
+      if (!byAttacker[key]) byAttacker[key] = { name: displayName || `#${key}`, count: 0, firstTs: ts, lastTs: ts };
+      byAttacker[key].count += 1;
+      if (ts && ts < byAttacker[key].firstTs) byAttacker[key].firstTs = ts;
+      if (ts && ts > byAttacker[key].lastTs) byAttacker[key].lastTs = ts;
+    }
+
+    const rows = Object.values(byAttacker).sort((a, b) => b.count - a.count);
+    renderHalloweenResults(rows, milsoulAttacks);
+    halloweenStatus && (halloweenStatus.innerText = `Report ready — ${rows.length} players.`);
+  } catch (e) {
+    console.error(e);
+    halloweenStatus && (halloweenStatus.innerText = `Error: ${e.message}`);
+    halloweenResultsBody && (halloweenResultsBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-red-400">${e.message}</td></tr>`);
+  }
+}
+
+function renderHalloweenResults(rows, milsoulAttacks) {
+  if (!halloweenResultsBody) return;
+  halloweenResultsBody.innerHTML = "";
+  if (!rows || rows.length === 0) {
+    halloweenResultsBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500">No attacks found in the selected window.</td></tr>`;
+    return;
+  }
+
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    const tdName = document.createElement('td'); tdName.className = 'px-3 py-2'; tdName.textContent = r.name || 'Unknown';
+    const tdCount = document.createElement('td'); tdCount.className = 'px-3 py-2'; tdCount.textContent = String(r.count);
+    const tdFirst = document.createElement('td'); tdFirst.className = 'px-3 py-2'; tdFirst.textContent = r.firstTs ? new Date(r.firstTs * 1000).toLocaleString() : '-';
+    const tdLast = document.createElement('td'); tdLast.className = 'px-3 py-2'; tdLast.textContent = r.lastTs ? new Date(r.lastTs * 1000).toLocaleString() : '-';
+    tr.appendChild(tdName); tr.appendChild(tdCount); tr.appendChild(tdFirst); tr.appendChild(tdLast);
+    halloweenResultsBody.appendChild(tr);
+  }
+  // Append milsoul attacks
+  const milsoulRow = document.createElement('tr');
+  const milsoulTd = document.createElement('td'); milsoulTd.className = 'px-3 py-2 font-bold text-red-400'; milsoulTd.textContent = 'Milsoul Killed ';
+  const milsoulCountTd = document.createElement('td'); milsoulCountTd.className = 'px-3 py-2 font-bold text-red-400'; milsoulCountTd.textContent = String(milsoulAttacks);
+  const milsoulEmpty1 = document.createElement('td'); milsoulEmpty1.className = 'px-3 py-2'; milsoulEmpty1.textContent = '-';
+  const milsoulEmpty2 = document.createElement('td'); milsoulEmpty2.className = 'px-3 py-2'; milsoulEmpty2.textContent = '-';
+  milsoulRow.appendChild(milsoulTd); milsoulRow.appendChild(milsoulCountTd); milsoulRow.appendChild(milsoulEmpty1); milsoulRow.appendChild(milsoulEmpty2);
+  halloweenResultsBody.appendChild(milsoulRow);
 }
 
 async function searchItemData() {

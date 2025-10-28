@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS # Import the CORS extension
-from flask import abort, request
+from flask import abort, request, render_template
 from time import strftime, localtime
 import datetime
 import time 
@@ -65,6 +65,7 @@ def init_db():
 
 # Initialize the Flask app and the database
 app = Flask(__name__)
+
 init_db()
 
 # --- CORS Configuration ---
@@ -222,36 +223,9 @@ def get_total_summary():
     return jsonify([dict(ix) for ix in results])
 
 @app.route('/')
-def serve_frontend():
-    # Construct the path to the HTML file in the same directory as app.py
-    frontend_filepath = os.path.join(os.getcwd(), 'index.html')
-    
-    try:
-        # Read the content of the HTML file
-        with open(frontend_filepath, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        # Return the content. Flask automatically sets the Content-Type to text/html.
-        return html_content
-    except FileNotFoundError:
-        # Use Flask's abort to return a clean 404 error
-        return abort(404, description="Frontend file (index.html) not found in the current directory.")
+def root():
+    return render_template("index.html")
 
-@app.route('/code')
-def serve_js():
-    # Construct the path to the HTML file in the same directory as app.py
-    frontend_filepath = os.path.join(os.getcwd(), 'code.js')
-    
-    try:
-        # Read the content of the HTML file
-        with open(frontend_filepath, 'r', encoding='utf-8') as f:
-            js_content = f.read()
-        
-        # Return the content. Flask automatically sets the Content-Type to text/html.
-        return js_content
-    except FileNotFoundError:
-        # Use Flask's abort to return a clean 404 error
-        return abort(404, description="Frontend file (code.js) not found in the current directory.")
 @app.route('/calculate_profit', methods=['GET'])
 def calculate_profit():
     conn = get_db_connection()
