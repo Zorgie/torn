@@ -262,9 +262,9 @@ function renderDailySummaryResults(summary) {
   // Calculate Totals for relevant columns
   const totals = summary.reduce(
     (acc, row) => {
-      acc.totalBuyCount += row["buyCount"];
-      acc.totalSellCount += row["sellCount"];
-      acc.totalProfit += row.profit;
+      acc.totalBuyCount += parseInt(row["buyCount"]);
+      acc.totalSellCount += parseInt(row["sellCount"]);
+      acc.totalProfit += parseInt(row.profit);
       return acc;
     },
     { totalBuyCount: 0, totalSellCount: 0, totalProfit: 0 }
@@ -378,8 +378,11 @@ async function fetchPriceHistory() {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
 
+        // Get the itemId from the local items data
+        const itemId = parseInt(Object.keys(items).find(id => items[id].name.toLowerCase() === itemName.toLowerCase()));
+
         // Filter for the specific item and prepare chart data
-        const itemData = data.filter(row => row.itemName.toLowerCase() === itemName.toLowerCase());
+        const itemData = data.filter(row => parseInt(row.itemId) === itemId);
         
         if (itemData.length === 0) {
             priceHistoryStatus.innerText = "No data found for this item in the selected date range";

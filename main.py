@@ -165,7 +165,7 @@ def add_data():
         for trade in trades:
              # Ensure trade has all required keys or handle missing ones gracefully
             trade_params.append({
-                "userId": userId, 
+                "userId": int(userId), 
                 "id": trade['id'], 
                 "itemId": trade['itemId'], 
                 "tradeType": trade['tradeType'], 
@@ -176,7 +176,10 @@ def add_data():
             
         # The query must be modified to include userId in the INSERT/UPDATE
         db_conn.execute(
-            sqlalchemy.text("INSERT INTO MARKET_TRADES (userId, id, itemId, tradeType, quantity, price, timestamp) VALUES (:userId, :id, :itemId, :tradeType, :quantity, :price, :timestamp) ON DUPLICATE KEY UPDATE userId=:userId, itemId=:itemId, tradeType=:tradeType, quantity=:quantity, price=:price, timestamp=:timestamp"), 
+            sqlalchemy.text("""
+                            INSERT INTO MARKET_TRADES (userId, id, itemId, tradeType, quantity, price, timestamp) 
+                            VALUES (:userId, :id, :itemId, :tradeType, :quantity, :price, :timestamp)
+                            """), 
             trade_params # Pass the list of dictionaries
         )
         db_conn.commit()
