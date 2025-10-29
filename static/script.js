@@ -554,7 +554,7 @@ async function fetchItemMarket(timestamp) {
     timestamp = getMinTimestamp();
   }
   const itemMarketBaseUrl =
-    "https://api.torn.com/user/3960421?selections=log&cat=11&key=" + apiKey();
+    "https://api.torn.com/user?selections=log&cat=11&key=" + apiKey();
   queryRes = await fetchPartial([], [], timestamp, itemMarketBaseUrl);
   updateStatus("Fetch complete, ready to parse");
   return queryRes;
@@ -569,7 +569,7 @@ async function fetchBazaar(timestamp) {
   if (!timestamp) {
     timestamp = getMinTimestamp();
   }
-  const bazaarUrl = `https://api.torn.com/user/3960421?selections=log&cat=${CATEGORY_BAZAAR}&key=${apiKey()}`;
+  const bazaarUrl = `https://api.torn.com/user?selections=log&cat=${CATEGORY_BAZAAR}&key=${apiKey()}`;
   queryRes = await fetchPartial([], [], timestamp, bazaarUrl);
   updateStatus("Fetch complete, ready to parse");
   return queryRes;
@@ -1056,7 +1056,6 @@ async function generateDailySummary() {
 
 /**
  * Fetch the current user's itemmarket listings from Torn.
- * Uses user id 3960421 (same as other user-specific calls in this project).
  * Returns an array of listing objects with at least: itemId, price, quantity, id.
  */
 async function fetchMyListings() {
