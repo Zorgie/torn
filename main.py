@@ -221,9 +221,9 @@ def get_daily_summary():
             query = sqlalchemy.text('''
                 SELECT itemId, isodate, buyCount, avgBuyPrice, sellCount, avgSellPrice, profit
                 FROM DAILY_SUMMARY 
-                WHERE isodate IN :dates
+                WHERE isodate IN :dates AND userId = :userId
                 ORDER BY isodate DESC, profit DESC
-            ''').bindparams(dates=tuple(dates)) # Pass as a tuple to bind to :dates
+            ''').bindparams(dates=tuple(dates), userId=userId) # Pass as a tuple to bind to :dates
             
             results = db_conn.execute(query).fetchall()
         else:
@@ -246,8 +246,12 @@ def get_daily_summary():
 
 @app.route('/profit_by_date', methods=['GET'])
 def get_profit_by_date():
-    # Uses global db_pool
-    query = sqlalchemy.text("SELECT isodate, SUM(profit) AS profit FROM DAILY_SUMMARY GROUP BY 1 ORDER BY isodate DESC;")
+    userId = request.headers.get('X-User-Id') # None if missing
+    secret = request.headers.get('X-Secret')
+    
+    if not authorize(userId, secret):
+        return jsonify({"error": "Unauthorized"}), 401
+    query = sqlalchemy.text("SELECT isodate, SUM(profit) AS profit FROM DAILY_SUMMARY WHERE userId=:userId GROUP BY 1 ORDER BY isodate DESC;", {"userId": userId})
     
     with db_pool.connect() as db_conn:
         results = db_conn.execute(query).fetchall()
@@ -257,6 +261,11 @@ def get_profit_by_date():
 
 @app.route('/total_summary', methods=['GET'])
 def get_total_summary():
+    userId = request.headers.get('X-User-Id') # None if missing
+    secret = request.headers.get('X-Secret')
+    
+    if not authorize(userId, secret):
+        return jsonify({"error": "Unauthorized"}), 401
     query = sqlalchemy.text('''
         SELECT
             itemId,
@@ -268,13 +277,13 @@ def get_total_summary():
                 COALESCE(ROUND(SUM(CASE WHEN tradeType = 'SELL' THEN price * quantity * 0.95 ELSE 0 END)) / NULLIF(SUM(CASE WHEN tradeType = 'SELL' THEN quantity ELSE 0 END), 0), 0) -
                 COALESCE(SUM(CASE WHEN tradeType = 'BUY' THEN price * quantity ELSE 0 END) / NULLIF(SUM(CASE WHEN tradeType = 'BUY' THEN quantity ELSE 0 END), 0), 0)
             ) AS profit
-        FROM MARKET_TRADES
+        FROM MARKET_TRADES WHERE userId=:userId
         GROUP BY 1
         ORDER BY profit DESC;
     ''')
 
     with db_pool.connect() as db_conn:
-        results = db_conn.execute(query).fetchall()
+        results = db_conn.execute(query, {"userId": userId}).fetchall()
 
     return jsonify([ix._asdict() for ix in results])
 
