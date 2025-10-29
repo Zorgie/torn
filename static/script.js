@@ -529,7 +529,7 @@ const MARKET_SELL = 1113;
 const CATEGORY_MARKET = 11;
 const CATEGORY_BAZAAR = 18;
 const BAZAAR_BUY = 1225;
-const BAZAAR_SELL = 0;
+const BAZAAR_SELL = 1226;
 let queryRes;
 let parsedBuy;
 
@@ -810,7 +810,7 @@ async function fetchFactionAttacksPaginated(fromTs, toTs) {
     let url = `https://api.torn.com/v2/faction/attacksfull?filters=outgoing&limit=1000&sort=DESC&key=${apiKey()}`;
     if (fromTs) url += `&from=${fromTs}`;
     if (toParam) url += `&to=${toParam}`;
-    halloweenStatus && (halloweenStatus.innerText = `Fetching attacks (to=${toParam || 'latest'}) — fetched ${all.length}`);
+    halloweenStatus && (halloweenStatus.innerText = `Fetching attacks — fetched ${all.length}`);
     const res = await fetchWithRateLimit(url);
     if (!res.ok) throw new Error(`Attacks fetch failed: ${res.status}`);
     const json = await res.json();
@@ -826,26 +826,13 @@ async function fetchFactionAttacksPaginated(fromTs, toTs) {
     // Find minimum timestamp in this chunk to page
     let minTs = Number.MAX_SAFE_INTEGER;
     for (const a of chunk) {
-      const ts = a.started;
-      const n = Number(ts);
-      if (!Number.isNaN(n)) minTs = Math.min(minTs, n);
+      const timestamp = Number(a.ended);
+      if (!Number.isNaN(timestamp)) minTs = Math.min(minTs, timestamp);
     }
     if (minTs === Number.MAX_SAFE_INTEGER) break;
     toParam = minTs - 1;
-    // be polite to the API
-    await sleep(200);
   }
   return all;
-}
-
-function getAttackTimestamp(a) {
-  return Number(a.timestamp || a.time || a.date || a.attack_time || (a.attacked && a.attacked.timestamp) || 0);
-}
-
-function getAttackerId(a) {
-  // try several common shapes
-  if (!a) return null;
-  return a.attacker_id || a.attacker?.player_id || a.attacker?.id || a.attackerId || a.attacker?.id || a.attacker || a.attacker_name || a.attacker_name;
 }
 
 async function fetchHalloweenReport() {
@@ -877,36 +864,22 @@ async function fetchHalloweenReport() {
       if (defender.id === 3170298) {// Milsoul
         milsoulAttacks += 1;
       }
-      const rawAttacker = getAttackerId(atk);
-      let key = rawAttacker ? String(rawAttacker) : null;
+      const rawAttacker = parseInt(atk.attacker.id);
+      let key = rawAttacker;
       // if key is not numeric, try to resolve by name
-      let displayName = null;
-      if (key && /^\d+$/.test(key) && members[key]) {
-        displayName = members[key];
-      } else if (key && typeof key === 'string' && !/^\d+$/.test(key)) {
-        // try find member by exact name match
-        const found = Object.entries(members).find(([id, name]) => name && name.toLowerCase() === key.toLowerCase());
-        if (found) {
-          key = found[0];
-          displayName = found[1];
-        } else {
-          displayName = key; // use raw as fallback
-        }
-      } else {
-        // fallback: try attacker name field
-        displayName = atk.attacker && (atk.attacker.name || atk.attacker.player_name) || atk.attacker_name || "Unknown";
-      }
+      let displayName = members[key] || key;
 
-      const ts = getAttackTimestamp(atk) || 0;
-      if (!byAttacker[key]) byAttacker[key] = { name: displayName || `#${key}`, count: 0, firstTs: ts, lastTs: ts };
+      const ts = atk.ended || 0;
+      if (!byAttacker[key]) byAttacker[key] = { name: displayName || `#${key}`, count: 0, respect: 0.0, firstTs: ts, lastTs: ts };
       byAttacker[key].count += 1;
+      byAttacker[key].respect += parseFloat(atk.respect_gain || 0);
       if (ts && ts < byAttacker[key].firstTs) byAttacker[key].firstTs = ts;
       if (ts && ts > byAttacker[key].lastTs) byAttacker[key].lastTs = ts;
     }
 
     const rows = Object.values(byAttacker).sort((a, b) => b.count - a.count);
     renderHalloweenResults(rows, milsoulAttacks);
-    halloweenStatus && (halloweenStatus.innerText = `Report ready — ${rows.length} players.`);
+    halloweenStatus && (halloweenStatus.innerText = `Report ready - ${rows.length} players.`);
   } catch (e) {
     console.error(e);
     halloweenStatus && (halloweenStatus.innerText = `Error: ${e.message}`);
@@ -926,9 +899,8 @@ function renderHalloweenResults(rows, milsoulAttacks) {
     const tr = document.createElement('tr');
     const tdName = document.createElement('td'); tdName.className = 'px-3 py-2'; tdName.textContent = r.name || 'Unknown';
     const tdCount = document.createElement('td'); tdCount.className = 'px-3 py-2'; tdCount.textContent = String(r.count);
-    const tdFirst = document.createElement('td'); tdFirst.className = 'px-3 py-2'; tdFirst.textContent = r.firstTs ? new Date(r.firstTs * 1000).toLocaleString() : '-';
-    const tdLast = document.createElement('td'); tdLast.className = 'px-3 py-2'; tdLast.textContent = r.lastTs ? new Date(r.lastTs * 1000).toLocaleString() : '-';
-    tr.appendChild(tdName); tr.appendChild(tdCount); tr.appendChild(tdFirst); tr.appendChild(tdLast);
+    const tdRespect = document.createElement('td'); tdRespect.className = 'px-3 py-2'; tdRespect.textContent = parseInt(r.respect);
+    tr.appendChild(tdName); tr.appendChild(tdCount); tr.appendChild(tdRespect);
     halloweenResultsBody.appendChild(tr);
   }
   // Append milsoul attacks
@@ -936,8 +908,7 @@ function renderHalloweenResults(rows, milsoulAttacks) {
   const milsoulTd = document.createElement('td'); milsoulTd.className = 'px-3 py-2 font-bold text-red-400'; milsoulTd.textContent = 'Milsoul Killed ';
   const milsoulCountTd = document.createElement('td'); milsoulCountTd.className = 'px-3 py-2 font-bold text-red-400'; milsoulCountTd.textContent = String(milsoulAttacks);
   const milsoulEmpty1 = document.createElement('td'); milsoulEmpty1.className = 'px-3 py-2'; milsoulEmpty1.textContent = '-';
-  const milsoulEmpty2 = document.createElement('td'); milsoulEmpty2.className = 'px-3 py-2'; milsoulEmpty2.textContent = '-';
-  milsoulRow.appendChild(milsoulTd); milsoulRow.appendChild(milsoulCountTd); milsoulRow.appendChild(milsoulEmpty1); milsoulRow.appendChild(milsoulEmpty2);
+  milsoulRow.appendChild(milsoulTd); milsoulRow.appendChild(milsoulCountTd); milsoulRow.appendChild(milsoulEmpty1);
   halloweenResultsBody.appendChild(milsoulRow);
 }
 
