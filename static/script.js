@@ -94,6 +94,11 @@ const halloweenEndInput = document.getElementById("halloween-end");
 const halloweenGenerateBtn = document.getElementById("halloween-generate-btn");
 const halloweenStatus = document.getElementById("halloween-status");
 const halloweenResultsBody = document.getElementById("halloween-results-body");
+const halloweenTableHeader = document.querySelector("#halloween-results-body").parentElement.querySelector("thead");
+
+// State for halloween report sorting
+let halloweenReportData = [];
+let halloweenSortState = { column: 'count', direction: 'desc' };
 
 // Add global items store and storage key
 let items = {}; // will hold the items JSON (id -> {name,...})
@@ -337,6 +342,13 @@ findUndercutsBtn.addEventListener("click", findUndercuts);
 // Halloween report listener
 if (halloweenGenerateBtn) {
   halloweenGenerateBtn.addEventListener("click", fetchHalloweenReport);
+}
+if (halloweenTableHeader) {
+  halloweenTableHeader.addEventListener('click', (e) => {
+    const sortKey = e.target.dataset.sort;
+    if (!sortKey) return;
+    handleHalloweenSort(sortKey);
+  });
 }
 // NEW: Price history listener
 if (fetchPriceHistoryBtn) {
@@ -877,7 +889,9 @@ async function fetchHalloweenReport() {
       if (ts && ts > byAttacker[key].lastTs) byAttacker[key].lastTs = ts;
     }
 
-    const rows = Object.values(byAttacker).sort((a, b) => b.count - a.count);
+    // Store raw data and sort it initially
+    halloweenReportData = Object.values(byAttacker);
+    const rows = sortHalloweenData();
     renderHalloweenResults(rows, milsoulAttacks);
     halloweenStatus && (halloweenStatus.innerText = `Report ready - ${rows.length} players.`);
   } catch (e) {
@@ -885,6 +899,52 @@ async function fetchHalloweenReport() {
     halloweenStatus && (halloweenStatus.innerText = `Error: ${e.message}`);
     halloweenResultsBody && (halloweenResultsBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-sm text-red-400">${e.message}</td></tr>`);
   }
+}
+
+/**
+ * Handles sorting of the halloween report table.
+ * @param {string} column - The column key to sort by ('name', 'count', 'respect').
+ */
+function handleHalloweenSort(column) {
+  if (halloweenSortState.column === column) {
+    // Reverse direction if same column is clicked
+    halloweenSortState.direction = halloweenSortState.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    // Set new column and default direction
+    halloweenSortState.column = column;
+    halloweenSortState.direction = column === 'name' ? 'asc' : 'desc';
+  }
+
+  const sortedRows = sortHalloweenData();
+  // Re-render the table with sorted data. We need to find milsoul attacks again.
+  const milsoulAttacks = halloweenReportData.find(r => r.name.includes('Milsoul'))?.count || 0; // This is an approximation
+  renderHalloweenResults(sortedRows, milsoulAttacks);
+
+  // Update header styles
+  halloweenTableHeader.querySelectorAll('th').forEach(th => {
+    th.classList.remove('bg-gray-600');
+    if (th.dataset.sort === column) {
+      th.classList.add('bg-gray-600');
+    }
+  });
+}
+
+/**
+ * Sorts the global halloweenReportData based on halloweenSortState.
+ * @returns {Array} The sorted data array.
+ */
+function sortHalloweenData() {
+  const { column, direction } = halloweenSortState;
+  const modifier = direction === 'asc' ? 1 : -1;
+
+  return halloweenReportData.sort((a, b) => {
+    const valA = a[column];
+    const valB = b[column];
+
+    if (valA < valB) return -1 * modifier;
+    if (valA > valB) return 1 * modifier;
+    return 0;
+  });
 }
 
 function renderHalloweenResults(rows, milsoulAttacks) {
